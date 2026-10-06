@@ -1,0 +1,112 @@
+groups:
+  - name: pin-bridge-availability
+    rules:
+      - alert: PinBridgeTargetDown
+        expr: up{job=~"api|worker"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: 'Pin Bridge {{ $labels.job }} is down'
+          description: 'Prometheus cannot scrape {{ $labels.instance }} for 2 minutes.'
+
+      - alert: PinBridgeApiErrors
+        expr: |
+          sum(rate(pinbridge_http_request_duration_seconds_count{status_code=~"5.."}[5m]))
+            / clamp_min(sum(rate(pinbridge_http_request_duration_seconds_count[5m])), 1e-9) > 0.05
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: 'More than 5% of agency API requests fail with 5xx'
+
+      - alert: PinBridgeApiSlow
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(pinbridge_http_request_duration_seconds_bucket[5m]))) > 0.5
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: 'Agency API p95 latency above 500 ms'
+
+  - name: pin-bridge-pin
+    rules:
+      - alert: PinCloudflareBlocked
+        expr: sum(increase(pinbridge_pin_requests_total{outcome="cloudflare_blocked"}[10m])) > 0
+        labels: { severity: critical }
+        annotations:
+          summary: 'Cloudflare is blocking calls to pin.tt'
+          description: >-
+            The server egress IP is probably no longer in Pin's allowlist (or PIN_HTTPS_PROXY is wrong).
+            Run `docker compose run --rm worker node dist/cli/pin-smoke.js` and contact Pin.
+
+      - alert: PinCircuitOpen
+        expr: max(pinbridge_pin_breaker_state) == 2
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: 'Circuit breaker to pin.tt is open: Pin is failing, publishing is paused'
+
+      - alert: PinErrorRateHigh
+        expr: |
+          sum(rate(pinbridge_pin_requests_total{outcome=~"server|timeout|network|rate_limited"}[10m]))
+            / clamp_min(sum(rate(pinbridge_pin_requests_total[10m])), 1e-9) > 0.2
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: 'More than 20% of calls to pin.tt fail'
+
+      - alert: PinUnexpectedResponses
+        expr: sum(increase(pinbridge_pin_requests_total{outcome="unexpected_response"}[30m])) > 0
+        labels: { severity: warning }
+        annotations:
+          summary: 'pin.tt returned responses Pin Bridge does not understand (API change?)'
+
+      - alert: PinDictionariesStale
+        expr: max(pinbridge_dictionary_age_seconds) > 2 * 86400
+        for: 30m
+        labels: { severity: warning }
+        annotations:
+          summary: 'Pin reference data not refreshed for 2 days'
+          description: 'Run `docker compose run --rm worker node dist/cli/admin.js dict:sync` and check the worker logs.'
+
+  - name: pin-bridge-publishing
+    rules:
+      - alert: ListingQueueBacklog
+        expr: max(pinbridge_queue_oldest_waiting_seconds{queue="listings"}) > 600
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: 'Listings wait more than 10 minutes to be published'
+
+      - alert: ListingsStuck
+        expr: max(pinbridge_listings_stuck) > 0
+        for: 30m
+        labels: { severity: warning }
+        annotations:
+          summary: '{{ $value }} listings have made no progress for over 45 minutes'
+
+      - alert: ListingSyncFailures
+        expr: sum(increase(pinbridge_listing_sync_total{result="failed"}[30m])) > 20
+        labels: { severity: warning }
+        annotations:
+          summary: 'More than 20 listings failed to publish in 30 minutes'
+
+      - alert: ConnectionsNeedReauth
+        expr: max(pinbridge_connections{status="reauth_required"}) > 0
+        for: 6h
+        labels: { severity: info }
+        annotations:
+          summary: '{{ $value }} Pin accounts have been waiting for re-authentication for 6 hours'
+
+  - name: pin-bridge-webhooks
+    rules:
+      - alert: WebhookBacklog
+        expr: max(pinbridge_webhook_oldest_pending_seconds) > 1800
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: 'A webhook event has been undelivered for over 30 minutes'
+
+      - alert: WebhookEventsDead
+        expr: increase(pinbridge_webhook_deliveries_total{outcome="dead"}[1h]) > 0
+        labels: { severity: warning }
+        annotations:
+          summary: 'Webhook events were given up after 24 hours of failed delivery'

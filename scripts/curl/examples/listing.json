@@ -1,0 +1,17 @@
+{
+  "external_id": "pb-test-1",
+  "category": "residential_rent",
+  "title": "Pin Bridge test listing, please ignore",
+  "description": "Test listing published through Pin Bridge. It will be removed shortly.",
+  "price": 3500,
+  "currency": "TTD",
+  "region": "central",
+  "coordinates": { "lat": 10.65, "lng": -61.41 },
+  "images": [],
+  "contact": { "name": "Pin Bridge Test" },
+  "attributes": {
+    "type": "Apartment",
+    "bedrooms": 2,
+    "number-of-bathrooms": 1
+  }
+}

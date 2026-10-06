@@ -1,0 +1,37 @@
+rule_files:
+  - alerts.yml
+evaluation_interval: 30s
+tests:
+  - interval: 1m
+    input_series:
+      - series: 'pinbridge_pin_requests_total{endpoint="items.create",outcome="cloudflare_blocked"}'
+        values: '0 0 3 3 3'
+      - series: 'pinbridge_pin_breaker_state{job="worker"}'
+        values: '0 2 2 2 2'
+      - series: 'pinbridge_listings_stuck{job="worker"}'
+        values: '0x60 4x40'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: PinCloudflareBlocked
+        exp_alerts:
+          - exp_labels: { severity: critical }
+            exp_annotations:
+              summary: 'Cloudflare is blocking calls to pin.tt'
+              description: >-
+                The server egress IP is probably no longer in Pin's allowlist (or PIN_HTTPS_PROXY is wrong).
+                Run `docker compose run --rm worker node dist/cli/pin-smoke.js` and contact Pin.
+      - eval_time: 4m
+        alertname: PinCircuitOpen
+        exp_alerts:
+          - exp_labels: { severity: critical }
+            exp_annotations:
+              summary: 'Circuit breaker to pin.tt is open: Pin is failing, publishing is paused'
+      - eval_time: 30m
+        alertname: ListingsStuck
+        exp_alerts: []
+      - eval_time: 95m
+        alertname: ListingsStuck
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations:
+              summary: '4 listings have made no progress for over 45 minutes'

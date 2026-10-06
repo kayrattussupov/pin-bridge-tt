@@ -1,0 +1,291 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Tenants
+// ---------------------------------------------------------------------------
+
+enum AgencyStatus {
+  active
+  suspended
+}
+
+model Agency {
+  id          String       @id @default(uuid()) @db.Uuid
+  name        String
+  // Short slug used to namespace external_id values sent to Pin.
+  slug        String       @unique
+  status      AgencyStatus @default(active)
+  ipAllowlist String[]     @default([]) @map("ip_allowlist")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  apiKeys          ApiKey[]
+  connections      Connection[]
+  listings         Listing[]
+  webhookEndpoints WebhookEndpoint[]
+  idempotencyKeys  IdempotencyKey[]
+  invites          EnrollmentInvite[]
+
+  @@map("agencies")
+}
+
+/// One-time code an operator hands to an agency; redeeming it creates the agency and its first
+/// API key (POST /v1/enroll).
+model EnrollmentInvite {
+  id                String    @id @default(uuid()) @db.Uuid
+  // Public, non-secret prefix used to look the code up.
+  codePrefix        String    @unique @map("code_prefix")
+  codeHash          String    @map("code_hash")
+  agencyName        String    @map("agency_name")
+  agencySlug        String?   @map("agency_slug")
+  expiresAt         DateTime  @map("expires_at")
+  usedAt            DateTime? @map("used_at")
+  // HMAC of the client_request_id of the redeeming call, so a lost response can be retried.
+  clientRequestHash String?   @map("client_request_hash")
+  agencyId          String?   @map("agency_id") @db.Uuid
+  revokedAt         DateTime? @map("revoked_at")
+  createdBy         String    @map("created_by")
+  createdAt         DateTime  @default(now()) @map("created_at")
+
+  agency Agency? @relation(fields: [agencyId], references: [id], onDelete: SetNull)
+
+  @@map("enrollment_invites")
+}
+
+model ApiKey {
+  id            String    @id @default(uuid()) @db.Uuid
+  agencyId      String    @map("agency_id") @db.Uuid
+  // Public, non-secret prefix used to look the key up.
+  keyPrefix     String    @unique @map("key_prefix")
+  keyHash       String    @map("key_hash")
+  hmacSecretEnc Bytes     @map("hmac_secret_enc")
+  scopes        String[]  @default([])
+  lastUsedAt    DateTime? @map("last_used_at")
+  revokedAt     DateTime? @map("revoked_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  agency Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+
+  @@index([agencyId])
+  @@map("api_keys")
+}
+
+// ---------------------------------------------------------------------------
+// Pin accounts connected by agencies (phone_verify flow)
+// ---------------------------------------------------------------------------
+
+enum ConnectionStatus {
+  pending_code
+  active
+  reauth_required
+  disabled
+}
+
+model Connection {
+  id                String           @id @default(uuid()) @db.Uuid
+  agencyId          String           @map("agency_id") @db.Uuid
+  phoneE164         String           @map("phone_e164")
+  displayName       String           @map("display_name")
+  pinDeviceKeyEnc   Bytes?           @map("pin_device_key_enc")
+  pinTokenEnc       Bytes?           @map("pin_token_enc")
+  pinUserId         String?          @map("pin_user_id")
+  status            ConnectionStatus @default(pending_code)
+  smsCooldownUntil  DateTime?        @map("sms_cooldown_until")
+  smsRequestsWindow DateTime[]       @default([]) @map("sms_requests_window")
+  confirmAttempts   Int              @default(0) @map("confirm_attempts")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+
+  agency   Agency    @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  listings Listing[]
+
+  @@unique([agencyId, phoneE164])
+  @@map("connections")
+}
+
+// ---------------------------------------------------------------------------
+// Listings
+// ---------------------------------------------------------------------------
+
+enum DesiredState {
+  active
+  inactive
+  removed
+}
+
+enum SyncState {
+  queued
+  processing
+  synced
+  failed
+}
+
+model Listing {
+  id                String       @id @default(uuid()) @db.Uuid
+  agencyId          String       @map("agency_id") @db.Uuid
+  connectionId      String       @map("connection_id") @db.Uuid
+  externalId        String       @map("external_id")
+  pinItemId         String?      @map("pin_item_id")
+  rubric            Int
+  payload           Json
+  payloadHash       String       @map("payload_hash")
+  desiredState      DesiredState @default(active) @map("desired_state")
+  syncState         SyncState    @default(queued) @map("sync_state")
+  // Pin moderation status: 0 published, 1 on review, 2 hidden, 3 rejected, 4 blocked.
+  pinStatus         Int?         @map("pin_status")
+  notPaid           Boolean?     @map("not_paid")
+  moderatorComment  String?      @map("moderator_comment")
+  lastError         Json?        @map("last_error")
+  /// Mapping warnings from the last accepted version (shown to the agency).
+  warnings          Json?
+  /// Hash of the Pin payload (incl. picture ids) last applied on Pin; skips no-op updates.
+  syncedPinHash     String?      @map("synced_pin_hash")
+  /// A create call timed out: the item may exist on Pin. Look it up before creating again.
+  createUnknown     Boolean      @default(false) @map("create_unknown")
+  version           Int          @default(1)
+  lastSyncedAt      DateTime?    @map("last_synced_at")
+  /// When the moderation/payment status was last read from Pin's front_my.
+  statusCheckedAt   DateTime?    @map("status_checked_at")
+  /// When to read it next (sooner while on moderation or waiting for payment).
+  nextStatusCheckAt DateTime?    @map("next_status_check_at")
+  createdAt         DateTime     @default(now()) @map("created_at")
+  updatedAt         DateTime     @updatedAt @map("updated_at")
+
+  agency     Agency         @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  connection Connection     @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  images     ListingImage[]
+
+  @@unique([agencyId, connectionId, externalId])
+  @@index([connectionId, syncState])
+  @@index([pinItemId])
+  @@index([nextStatusCheckAt])
+  @@map("listings")
+}
+
+enum ImageStatus {
+  pending
+  uploaded
+  failed
+}
+
+model ListingImage {
+  id        String      @id @default(uuid()) @db.Uuid
+  listingId String      @map("listing_id") @db.Uuid
+  position  Int
+  sourceUrl String      @map("source_url")
+  sha256    String?
+  pinPicId  String?     @map("pin_pic_id")
+  width     Int?
+  height    Int?
+  status    ImageStatus @default(pending)
+  error     String?
+  createdAt DateTime    @default(now()) @map("created_at")
+  updatedAt DateTime    @updatedAt @map("updated_at")
+
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@unique([listingId, position])
+  @@index([sha256])
+  @@map("listing_images")
+}
+
+// ---------------------------------------------------------------------------
+// Idempotency, webhooks, dictionaries, audit
+// ---------------------------------------------------------------------------
+
+model IdempotencyKey {
+  agencyId       String   @map("agency_id") @db.Uuid
+  key            String
+  requestHash    String   @map("request_hash")
+  responseStatus Int      @map("response_status")
+  responseBody   Json     @map("response_body")
+  expiresAt      DateTime @map("expires_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  agency Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+
+  @@id([agencyId, key])
+  @@index([expiresAt])
+  @@map("idempotency_keys")
+}
+
+model WebhookEndpoint {
+  id        String   @id @default(uuid()) @db.Uuid
+  agencyId  String   @map("agency_id") @db.Uuid
+  url       String
+  secretEnc Bytes    @map("secret_enc")
+  events    String[] @default([])
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  agency Agency          @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  outbox WebhookOutbox[]
+
+  @@index([agencyId])
+  @@map("webhook_endpoints")
+}
+
+model WebhookOutbox {
+  id            String    @id @default(uuid()) @db.Uuid
+  endpointId    String    @map("endpoint_id") @db.Uuid
+  /// Stable id of the event (sent as `id`), for de-duplication by the receiver.
+  eventId       String    @default(uuid()) @map("event_id") @db.Uuid
+  event         String
+  payload       Json
+  attempts      Int       @default(0)
+  nextAttemptAt DateTime  @default(now()) @map("next_attempt_at")
+  deliveredAt   DateTime? @map("delivered_at")
+  deadAt        DateTime? @map("dead_at")
+  lastError     String?   @map("last_error")
+  lastStatus    Int?      @map("last_status")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  endpoint WebhookEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+
+  @@index([deliveredAt, deadAt, nextAttemptAt])
+  @@map("webhook_outbox")
+}
+
+model Dictionary {
+  kind      String
+  key       String
+  data      Json
+  dataHash  String   @map("data_hash")
+  fetchedAt DateTime @map("fetched_at")
+
+  @@id([kind, key])
+  @@map("dictionaries")
+}
+
+model AuditLog {
+  id        BigInt   @id @default(autoincrement())
+  actor     String
+  agencyId  String?  @map("agency_id") @db.Uuid
+  action    String
+  target    String?
+  ip        String?
+  meta      Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([agencyId, createdAt])
+  @@map("audit_log")
+}
+
+/// Secrets of Pin Bridge itself (e.g. the device key used for dictionary calls), encrypted.
+model SystemSecret {
+  name      String   @id
+  valueEnc  Bytes    @map("value_enc")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("system_secrets")
+}

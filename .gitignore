@@ -1,0 +1,15 @@
+node_modules/
+dist/
+coverage/
+src/generated/
+.env
+.env.*
+!.env.example
+*.log
+docker/monitoring/alertmanager.yml
+docker/monitoring/telegram_bot_token
+docker/monitoring/metrics_token
+backups/
+pb-report.txt
+dump.rdb
+pb-credentials.env
