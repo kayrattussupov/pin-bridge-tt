@@ -1,0 +1,16 @@
+{
+  "rubric": 21,
+  "city": 17,
+  "currency_id": 1,
+  "title": "Pin Bridge test listing, please ignore",
+  "description": "Test listing published directly through the Pin API. It will be removed shortly.",
+  "price": 3500,
+  "images": [],
+  "coordinates": { "latitude": 10.65, "longitude": -61.41 },
+  "user": { "name": "Pin Bridge Test", "email": "" },
+  "phone_hide": false,
+  "negotiable_price": false,
+  "external_id": "direct-test-1",
+  "item_link": "",
+  "attrs": {}
+}

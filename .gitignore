@@ -13,3 +13,6 @@ backups/
 pb-report.txt
 dump.rdb
 pb-credentials.env
+pin-test.env
+pin-direct-*.txt
+pb-credentials.cmd
