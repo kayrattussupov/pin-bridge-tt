@@ -410,7 +410,10 @@ export class ListingSyncService {
   // ---------------------------------------------------------------------------
 
   private async auth(listing: FullListing): Promise<PinAuth> {
-    return this.connections.authFor(listing.connectionId);
+    const auth = await this.connections.authFor(listing.connectionId);
+    // Fills pin_user_id for connections made before it was recorded (no-op once it is set).
+    await this.connections.recordPinUserId(listing.connectionId, auth);
+    return auth;
   }
 
   /**
