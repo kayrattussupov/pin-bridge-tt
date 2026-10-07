@@ -35,9 +35,33 @@ export const PIN_ITEM_STATUS = {
   blocked: 4,
 } as const;
 
+const STATUS_KEYS = ['id', 'value', 'code', 'status'] as const;
+
+/**
+ * POST /items/ returns `status` as a number, but prod front_my returns an object there (seen
+ * 2026-10-07, exact shape not captured yet). Take the numeric code from either form; anything
+ * unrecognised becomes undefined so one odd item cannot fail the whole status poll.
+ */
+function pinStatusCode(value: unknown): number | undefined {
+  const asCode = (v: unknown): number | undefined => {
+    const n = typeof v === 'string' && v.trim() !== '' ? Number(v) : v;
+    return typeof n === 'number' && Number.isInteger(n) && n >= 0 && n <= 4 ? n : undefined;
+  };
+  if (value !== null && typeof value === 'object') {
+    for (const key of STATUS_KEYS) {
+      const code = asCode((value as Record<string, unknown>)[key]);
+      if (code !== undefined) {
+        return code;
+      }
+    }
+    return undefined;
+  }
+  return asCode(value);
+}
+
 export const pinItemSchema = z.looseObject({
   id,
-  status: z.number().int().min(0).max(4).optional(),
+  status: z.unknown().optional().transform(pinStatusCode),
   not_paid: z.boolean().optional(),
   moderator_comment: z.string().nullable().optional(),
   external_id: z.string().nullable().optional(),
