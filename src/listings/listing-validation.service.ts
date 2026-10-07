@@ -151,6 +151,20 @@ export class ListingValidationService {
           })),
         };
       }
+      if (isPinError(error) && (error.retryable || error.kind === 'unexpected_response')) {
+        // Pin's own check is down (prod's validate_ad answers 500): our checks still stand.
+        return {
+          ...report,
+          warnings: [
+            ...report.warnings,
+            {
+              field: 'pin',
+              code: 'pin_check_unavailable',
+              message: 'Pin’s own check is unavailable; only Pin Bridge’s checks were run.',
+            },
+          ],
+        };
+      }
       if (isPinError(error) && error.kind === 'unauthorized') {
         await this.connections.markReauthRequired(connectionId, 'pin_unauthorized');
         throw new ApiError(

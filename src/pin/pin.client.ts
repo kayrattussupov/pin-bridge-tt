@@ -52,6 +52,11 @@ interface CallSpec<T> {
   /** False when resending could apply the call twice (create, toggle, SMS). */
   idempotent: boolean;
   statusEnvelope?: boolean;
+  /**
+   * Best-effort call whose 5xx answers do not count against the circuit breaker: a broken
+   * optional endpoint must not stop publishing (prod's validate_ad answers 500 to everything).
+   */
+  optional?: boolean;
   schema: ZodType<T>;
 }
 
@@ -201,8 +206,10 @@ export class PinClient {
       path: '/items/validate_ad/',
       json: payload,
       ...this.authOf(auth),
-      retry: 'safe',
+      // A dry run for an agency waiting on the answer: no retries, and its 500s are not an outage.
+      retry: 'none',
       idempotent: true,
+      optional: true,
       schema: anyJson,
     });
   }
@@ -403,7 +410,8 @@ export class PinClient {
 
     metrics.pinRequests.inc({ endpoint: spec.endpoint, outcome: error?.kind ?? 'ok' });
     if (error) {
-      await (error.isUpstreamFailure
+      const countsAsOutage = error.isUpstreamFailure && !(spec.optional && error.kind === 'server');
+      await (countsAsOutage
         ? this.breaker.recordFailure(ticket)
         : this.breaker.recordSuccess(ticket));
       this.logger.warn(

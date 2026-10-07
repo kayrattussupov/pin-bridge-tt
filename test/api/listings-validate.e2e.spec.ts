@@ -284,6 +284,21 @@ describe('POST /v1/listings/validate', () => {
     });
   });
 
+  it('falls back to its own checks when the Pin check fails', async () => {
+    const { creds } = await t.newAgency();
+    const connectionId = await connect(creds);
+    fake.control.failNext({ route: 'POST /items/validate_ad/', status: 500 });
+    const before = fake.control.callCount('POST /items/validate_ad/');
+    const res = await validate(creds, { connection_id: connectionId, listing: rentListing() });
+    expect(res.statusCode).toBe(200);
+    expect(json(res)).toMatchObject({ valid: true, checked_by_pin: false });
+    expect(json(res).warnings).toContainEqual(
+      expect.objectContaining({ field: 'pin', code: 'pin_check_unavailable' }),
+    );
+    // Not retried: the agency is waiting for the answer.
+    expect(fake.control.callCount('POST /items/validate_ad/') - before).toBe(1);
+  });
+
   it('refuses connections that are not active or not owned', async () => {
     const a = await t.newAgency();
     const b = await t.newAgency();

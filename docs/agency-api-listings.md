@@ -1,8 +1,7 @@
 # Pin Bridge API: listing format and validation
 
 Send listings in Pin Bridge's own format, with readable values. Pin Bridge translates them to
-Pin's internal ids. For example, on Pin "3 bedrooms" is variant key `10`, not `3`; you send
-`"bedrooms": 3`.
+Pin's internal ids. For example, on Pin "House" is variant key `1`; you send `"type": "House"`.
 
 All requests are signed as described in [agency-api-auth.md](agency-api-auth.md).
 
@@ -11,10 +10,10 @@ All requests are signed as described in [agency-api-auth.md](agency-api-auth.md)
 ```json
 {
   "external_id": "8842",
-  "category": "residential_rent",
-  "title": "2-bedroom apartment in Valsayn",
-  "description": "Fully furnished, A/C, gated community, parking.",
-  "price": 3500,
+  "category": "residential_sale",
+  "title": "3-bedroom house in St. Ann's",
+  "description": "Gated community, fully tiled, A/C in all rooms, covered parking.",
+  "price": 1850000,
   "currency": "TTD",
   "negotiable_price": false,
   "region": "central",
@@ -22,12 +21,13 @@ All requests are signed as described in [agency-api-auth.md](agency-api-auth.md)
   "coordinates": { "lat": 10.65, "lng": -61.41 },
   "images": ["https://cdn.your-agency.tt/8842/1.jpg"],
   "contact": { "name": "John Doe", "email": "john@your-agency.tt", "hide_phone": false },
-  "link": "https://your-agency.tt/listings/8842",
   "attributes": {
-    "type": "Apartment",
+    "type": "House",
     "bedrooms": 3,
-    "number-of-bathrooms": 2,
-    "water": ["WASA", "Tank"],
+    "village": "St. Ann's",
+    "number-of-bathrooms": "2.5",
+    "parking": "Covered",
+    "water": ["Hot", "Cold"],
     "floor-area": 1200
   }
 }
@@ -44,12 +44,21 @@ All requests are signed as described in [agency-api-auth.md](agency-api-auth.md)
 | `district_ids` | Optional; ids from `GET /v1/dictionaries/regions/{region}/districts`.                   |
 | `coordinates`  | Optional `{lat, lng}`.                                                                  |
 | `images`       | HTTPS URLs of JPEG/PNG photos. Pin shows at most 16; long side 1600 px or more is best. |
-| `contact.name` | Seller name shown on Pin. Defaults to the connection's `display_name`.                  |
-| `link`         | Optional link back to the listing on your site.                                         |
+| `contact.name` | Seller name shown on Pin. Defaults to the connection's `display_name`. See below.       |
+| `link`         | Optional link back to the listing on your site. Not allowed in `residential_sale`.      |
 | `attributes`   | Category attributes with readable values, see below.                                    |
-| `pin_attrs`    | Advanced: raw Pin `attrs` (slug → variant key), applied over `attributes`.              |
+| `pin_attrs`    | Advanced: raw Pin `attrs` (slug or `attrs__slug` → variant key), over `attributes`.     |
 
 Unknown fields are rejected, so a typo cannot silently drop data.
+
+Pin's own rules, checked only by Pin when the listing is published (the listing then fails with
+`pin_rejected` and Pin's message in `last_error.pin_errors`):
+
+- `link`: Pin refuses any link in `residential_sale` ("Item link not allowed in this category").
+  Leave it out for sales.
+- `contact.name`: Pin rejects names that look like placeholders: a single letter, only numbers or
+  symbols, or a single generic word such as "seller", "owner", "user", "admin", "test", or a brand
+  ("apple", "toyota"). Send the agent's or the agency's real name.
 
 ### Attributes
 
@@ -59,11 +68,17 @@ values also come as `options: [{ "value": "House", "label": "House" }]` for sele
 `value` in `attributes`. Values are readable labels, not Pin's internal ids; Pin Bridge translates
 them.
 
-- `select`: one of `values`, case-insensitive (`"apartment"` matches `"Apartment"`). A number above
-  an open-ended value matches it: `"bedrooms": 6` becomes `"4+"`.
-- `multiselect`: an array of `values`.
+- `select`: one of `values`, case-insensitive (`"house"` matches `"House"`). Numbers match their
+  label (`"bedrooms": 3` is `"3"`); if a list ends with an open-ended value such as `"9+"`, a
+  larger number matches it.
+- `multiselect`: an array of `values` (`"water": ["Hot", "Cold"]`).
 - `number`: a number.
+- `text`: free text (`"village": "St. Ann's"`).
 - `true` / `false` match `Yes` / `No` values.
+
+Required attributes are marked `required: true`; for `residential_sale` they are currently `type`,
+`bedrooms` (`Studio`, `1` … `15`) and `village`. A listing without them is refused with
+`code: "required"`.
 
 Pin's attribute lists can change. Pin Bridge refreshes them daily, so read them from the
 dictionary endpoint rather than hard-coding them.
@@ -76,24 +91,25 @@ dictionary endpoint rather than hard-coding them.
 { "connection_id": "optional, to also check with Pin", "listing": { … } }
 ```
 
-It always answers `200`:
+It answers `200` whether the listing is valid or not (`409 connection_not_active` and
+`429 rate_limited` apply only with a `connection_id`):
 
 ```json
 {
   "valid": false,
   "errors": [
     {
-      "field": "attributes.bedrooms",
+      "field": "attributes.type",
       "code": "unknown_value",
-      "message": "\"many\" is not a valid Bedrooms.",
-      "allowed": ["1", "2", "3", "4+"]
+      "message": "\"Bungalow\" is not a valid Type.",
+      "allowed": ["Apartment", "House", "Villa", "Townhouse", "Condo"]
     }
   ],
   "warnings": [
     {
       "field": "price",
       "code": "may_be_paid",
-      "message": "Paid placement (69.00 TT$ / 30 days) for rent above 4000 TT$ after 4 free such listings per 30 days."
+      "message": "Paid placement (69.00 TT$ / 30 days) after the first 5 free listings per 30 days."
     }
   ],
   "checked_by_pin": false
@@ -102,8 +118,12 @@ It always answers `200`:
 
 When the listing is valid, `pin_payload` shows exactly what will be sent to Pin. With an active
 `connection_id`, Pin's own validation runs too (`checked_by_pin: true`); photos are not
-uploaded for this check. Warnings do not block publishing. They flag paid placement, missing or
-extra photos, and coordinates outside Trinidad and Tobago.
+uploaded for this check. If Pin's check is unavailable (at the moment Pin answers it with an
+error), the answer is still `200` with Pin Bridge's own checks only: `checked_by_pin: false` and a
+`pin_check_unavailable` warning. Pin's own rules above are then checked at publishing.
+
+Warnings do not block publishing. They flag paid placement, missing or extra photos, coordinates
+outside Trinidad and Tobago, and an unavailable Pin check.
 
 ## Reference data
 
