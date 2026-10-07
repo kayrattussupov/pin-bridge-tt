@@ -27,6 +27,12 @@ describe('pinItemSchema status', () => {
     expect(item.moderator_comment).toBeNull();
   });
 
+  it('maps status_active (published) and other status_ codes', () => {
+    const active = { code: 'status_active', status: ['Active until 06.11.2026,&nbsp;07:16'] };
+    expect(pinItemSchema.parse({ id: 1, status: active }).status).toBe(0);
+    expect(pinItemSchema.parse({ id: 1, status: { code: 'status_rejected' } }).status).toBe(3);
+  });
+
   it('takes the moderator comment from the status object', () => {
     const item = pinItemSchema.parse({
       id: 1,

@@ -38,11 +38,13 @@ export const PIN_ITEM_STATUS = {
 /**
  * Prod front_my returns `status` as an object, not the number POST /items/ gives (2026-10-07):
  * `{"status": ["Pending for review", "Active until …"], "code": "status_check", "comment": "", …}`.
- * Only `status_check` is verified; the other codes are guesses from their names. Unknown codes
- * map to undefined (the previous status is kept) and are logged by the status sync.
+ * Verified: `status_check` (on review) and `status_active` (published, "Active until …"). Codes
+ * are looked up without the `status_` prefix; the others are guesses from their names. Unknown
+ * codes map to undefined (the previous status is kept) and are logged by the status sync.
  */
 const FRONT_MY_STATUS_CODES: Record<string, number> = {
-  status_check: PIN_ITEM_STATUS.onModeration,
+  check: PIN_ITEM_STATUS.onModeration,
+  moderation: PIN_ITEM_STATUS.onModeration,
   active: PIN_ITEM_STATUS.published,
   published: PIN_ITEM_STATUS.published,
   hidden: PIN_ITEM_STATUS.hidden,
@@ -82,7 +84,7 @@ export const pinItemSchema = z
     const code = detail.data.code;
     return {
       ...item,
-      status: code === undefined ? undefined : FRONT_MY_STATUS_CODES[code],
+      status: code === undefined ? undefined : FRONT_MY_STATUS_CODES[code.replace(/^status_/, '')],
       moderator_comment: item.moderator_comment ?? (detail.data.comment || null),
       /** Pin's raw status code and labels, kept for logging codes we cannot map yet. */
       status_code: code,
