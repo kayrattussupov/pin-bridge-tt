@@ -79,6 +79,17 @@ function matchVariant(
   return undefined;
 }
 
+const PIN_ATTR_PREFIX_RE = /^attrs__/;
+
+/**
+ * Pin reads attribute keys with the `attrs__` prefix, nested in `attrs`:
+ * `{"attrs": {"attrs__bedrooms": 1}}`. Bare slugs (`{"bedrooms": 1}`) are silently ignored and
+ * reported as "can not be empty"; so are top-level `attrs__bedrooms` keys (prod, 2026-10-07).
+ */
+function pinAttrs(attrs: CreateItemPayload['attrs']): CreateItemPayload['attrs'] {
+  return Object.fromEntries(Object.entries(attrs).map(([slug, v]) => [`attrs__${slug}`, v]));
+}
+
 function mapAttribute(
   field: AttributeField,
   value: ListingInput['attributes'][string],
@@ -173,10 +184,11 @@ export function mapListing(listing: ListingInput, ctx: MappingContext): MappingR
       attrs[slug] = mapped;
     }
   }
-  for (const [slug, value] of Object.entries(listing.pin_attrs ?? {})) {
+  for (const [key, value] of Object.entries(listing.pin_attrs ?? {})) {
+    const slug = key.replace(PIN_ATTR_PREFIX_RE, '');
     if (!fields.has(slug)) {
       warnings.push({
-        field: `pin_attrs.${slug}`,
+        field: `pin_attrs.${key}`,
         code: 'unknown_attribute',
         message: `"${slug}" is not in Pin's form for ${listing.category}; sent as is.`,
       });
@@ -263,7 +275,7 @@ export function mapListing(listing: ListingInput, ctx: MappingContext): MappingR
     negotiable_price: listing.negotiable_price,
     external_id: pinExternalId(ctx.agencySlug, listing.external_id),
     item_link: listing.link ?? '',
-    attrs,
+    attrs: pinAttrs(attrs),
   };
   return { errors, warnings, payload, imageUrls };
 }

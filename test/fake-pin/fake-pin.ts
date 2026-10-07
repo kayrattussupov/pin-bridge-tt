@@ -362,9 +362,11 @@ export function buildFakePin(options: FakePinOptions = {}): {
       if (!form) {
         errors.rubric = ['Unknown rubric.'];
       } else if (!partial || body.attrs !== undefined) {
+        // Prod (2026-10-07): keys inside attrs carry the prefix, `{attrs: {attrs__type: 1}}`;
+        // bare slugs are ignored and reported as empty.
         for (const field of form.fields.filter((f) => f.required)) {
-          if (body.attrs?.[field.slug] === undefined) {
-            errors[`attrs.${field.slug}`] = ['This field is required.'];
+          if (body.attrs?.[`attrs__${field.slug}`] === undefined) {
+            errors[`attrs__${field.slug}`] = [`${field.slug} can not be empty`];
           }
         }
       }

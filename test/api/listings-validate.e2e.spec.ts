@@ -169,6 +169,12 @@ describe('GET /v1/dictionaries', () => {
       required: true,
       type: 'select',
       values: ['1', '2', '3', '4+'],
+      options: [
+        { value: '1', label: '1' },
+        { value: '2', label: '2' },
+        { value: '3', label: '3' },
+        { value: '4+', label: '4+' },
+      ],
     });
     expect((await get('/v1/dictionaries/categories/boats/attributes')).statusCode).toBe(404);
     expect((await get('/v1/dictionaries/regions/mars/districts')).statusCode).toBe(404);
@@ -194,7 +200,7 @@ describe('POST /v1/listings/validate', () => {
         rubric: 21,
         city: 17,
         external_id: `${slug}.8842`,
-        attrs: { type: 2, bedrooms: 10 },
+        attrs: { attrs__type: 2, attrs__bedrooms: 10 },
       },
     });
   });

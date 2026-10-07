@@ -66,7 +66,10 @@ export interface PinCoordinates {
   longitude: number;
 }
 
-/** Body of POST /items/ as described by Pin. `attrs` values are variant keys from rubric_form. */
+/**
+ * Body of POST /items/ as described by Pin. `attrs` keys are `attrs__<slug>` and values are
+ * variant keys from rubric_form.
+ */
 export interface CreateItemPayload {
   rubric: number;
   /** On pin.tt this is the region id: 17 Central, 18 NE, 21 NW, 23 SW, 22 SE, 15 Tobago. */

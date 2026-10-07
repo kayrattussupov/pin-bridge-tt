@@ -1,10 +1,12 @@
 /**
  * Adapter for Pin's `GET /items/rubric_form/<id>/`.
  *
- * Pin has published no schema for this response, so this parser accepts the plausible shapes of
- * the platform (fields under `fields`/`features`/`attrs`/`form`/root array; variants under
- * `variants`/`choices`/`values`/`options`; ids under `key`/`id`/`value`). If production returns
- * something else, only this file needs to change: run `admin.js dict:show --kind rubric_form
+ * Production (seen 2026-10-07): `{ id, name, rubric_features: [{ feature_name: "attrs__bedrooms",
+ * feature_verbose_name, feature_type: "Integer choices", feature_choices: [{ key: "10", value: "3" }],
+ * required, geo }] }`. The `attrs__` prefix is dropped (the slug is the key inside `attrs`), numeric
+ * choice keys become numbers, and the geo field is skipped (coordinates are sent separately).
+ * Other plausible shapes (`fields`/`variants`/`choices`, root array) are still accepted. If Pin
+ * changes the format, only this file needs to change: run `admin.js dict:show --kind rubric_form
  * --key 21` on the server to see the raw response.
  */
 
@@ -57,6 +59,7 @@ function fieldList(raw: unknown): unknown[] {
     return [];
   }
   for (const key of [
+    'rubric_features',
     'fields',
     'features',
     'attrs',
@@ -94,7 +97,11 @@ function parseVariant(raw: unknown): AttributeVariant | undefined {
   if ((typeof key !== 'number' && typeof key !== 'string') || label === undefined) {
     return undefined;
   }
-  return { key, label: String(label) };
+  // Pin sends "Integer choices" keys as strings ("10"); its attrs take them as integers.
+  return {
+    key: typeof key === 'string' && /^\d+$/.test(key) ? Number(key) : key,
+    label: String(label),
+  };
 }
 
 function parseField(raw: unknown): AttributeField | undefined {
@@ -102,23 +109,39 @@ function parseField(raw: unknown): AttributeField | undefined {
   if (!record) {
     return undefined;
   }
-  const slug = firstDefined(record, ['slug', 'key', 'name', 'code']);
-  if (typeof slug !== 'string' || !slug) {
+  const rawSlug = firstDefined(record, ['slug', 'key', 'feature_name', 'name', 'code']);
+  const slug = typeof rawSlug === 'string' ? rawSlug.replace(/^attrs__/, '') : '';
+  if (!slug) {
     return undefined;
   }
-  const title = String(firstDefined(record, ['title', 'label', 'name']) ?? slug);
+  const type = String(
+    firstDefined(record, ['type', 'feature_type', 'widget', 'input_type', 'kind']) ?? '',
+  ).toLowerCase();
+  if (record.geo === true || type === 'geo') {
+    return undefined;
+  }
+  const title = String(
+    firstDefined(record, ['title', 'label', 'feature_verbose_name', 'name']) ?? slug,
+  );
   const required = Boolean(
     firstDefined(record, ['required', 'is_required', 'obligatory', 'mandatory']),
   );
-  const rawVariants = firstDefined(record, ['variants', 'choices', 'values', 'options', 'items']);
+  const rawVariants = firstDefined(record, [
+    'variants',
+    'feature_choices',
+    'choices',
+    'values',
+    'options',
+    'items',
+  ]);
   const variants = Array.isArray(rawVariants)
     ? rawVariants.map(parseVariant).filter((v): v is AttributeVariant => Boolean(v))
     : [];
-  const type = String(
-    firstDefined(record, ['type', 'widget', 'input_type', 'kind']) ?? '',
-  ).toLowerCase();
   const multiple =
-    Boolean(firstDefined(record, ['multiple', 'is_multiple', 'multi'])) || MULTI_TYPES.has(type);
+    Boolean(firstDefined(record, ['multiple', 'is_multiple', 'multi'])) ||
+    MULTI_TYPES.has(type) ||
+    // Prod: "Integer multi choices".
+    /\bmulti/.test(type);
   const numeric =
     Boolean(firstDefined(record, ['numeric', 'is_numeric'])) || NUMERIC_TYPES.has(type);
 

@@ -83,7 +83,13 @@ function rentItem(overrides: Partial<CreateItemPayload> = {}): CreateItemPayload
     negotiable_price: false,
     external_id: 'duck-8842',
     item_link: '',
-    attrs: { type: 2, bedrooms: 2, 'number-of-bathrooms': 30, water: [10, 20], 'floor-area': 1200 },
+    attrs: {
+      attrs__type: 2,
+      attrs__bedrooms: 2,
+      'attrs__number-of-bathrooms': 30,
+      attrs__water: [10, 20],
+      'attrs__floor-area': 1200,
+    },
     ...overrides,
   };
 }

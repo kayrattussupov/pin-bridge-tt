@@ -42,7 +42,14 @@ export class DictionariesController {
         title: field.title,
         required: field.required,
         type: field.kind,
-        ...(field.variants.length ? { values: field.variants.map((v) => v.label) } : {}),
+        ...(field.variants.length
+          ? {
+              values: field.variants.map((v) => v.label),
+              // For select widgets: `value` is what to send in `attributes` (the readable label;
+              // Pin's own variant keys stay inside the bridge).
+              options: field.variants.map((v) => ({ value: v.label, label: v.label })),
+            }
+          : {}),
       })),
     };
   }

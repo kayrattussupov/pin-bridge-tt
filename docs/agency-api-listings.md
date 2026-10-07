@@ -54,7 +54,10 @@ Unknown fields are rejected, so a typo cannot silently drop data.
 ### Attributes
 
 `GET /v1/dictionaries/categories/{category}/attributes` lists each attribute with `slug`, `type`
-(`select`, `multiselect`, `number`, `text`), `required`, and the accepted `values`.
+(`select`, `multiselect`, `number`, `text`), `required`, and the accepted `values`. The same
+values also come as `options: [{ "value": "House", "label": "House" }]` for select widgets: send
+`value` in `attributes`. Values are readable labels, not Pin's internal ids; Pin Bridge translates
+them.
 
 - `select`: one of `values`, case-insensitive (`"apartment"` matches `"Apartment"`). A number above
   an open-ended value matches it: `"bedrooms": 6` becomes `"4+"`.

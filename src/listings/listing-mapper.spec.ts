@@ -47,11 +47,11 @@ describe('mapListing', () => {
       external_id: 'duck.8842',
       item_link: '',
       attrs: {
-        type: 2,
-        bedrooms: 2,
-        'number-of-bathrooms': 30,
-        water: [10, 20],
-        'floor-area': 1200,
+        attrs__type: 2,
+        attrs__bedrooms: 2,
+        'attrs__number-of-bathrooms': 30,
+        attrs__water: [10, 20],
+        'attrs__floor-area': 1200,
       },
     });
     expect(result.imageUrls).toEqual(['https://cdn.example.com/1.jpg']);
@@ -62,15 +62,15 @@ describe('mapListing', () => {
     expect(
       mapListing(listing({ attributes: { type: 'apartment', bedrooms: 3 } }), ctx).payload?.attrs,
     ).toEqual({
-      type: 2,
-      bedrooms: 10,
+      attrs__type: 2,
+      attrs__bedrooms: 10,
     });
   });
 
   it('matches case- and space-insensitively, and numbers above an "N+" variant', () => {
     const attrs = mapListing(listing({ attributes: { type: '  TOWNHOUSE ', bedrooms: 6 } }), ctx)
       .payload?.attrs;
-    expect(attrs).toEqual({ type: 3, bedrooms: 11 });
+    expect(attrs).toEqual({ attrs__type: 3, attrs__bedrooms: 11 });
   });
 
   it('reports every problem at once with allowed values', () => {
@@ -104,10 +104,22 @@ describe('mapListing', () => {
 
   it('lets pin_attrs override with raw keys', () => {
     const result = mapListing(listing({ pin_attrs: { bedrooms: 11, furnishing: 1 } }), ctx);
-    expect(result.payload?.attrs).toMatchObject({ bedrooms: 11, furnishing: 1 });
+    expect(result.payload?.attrs).toMatchObject({ attrs__bedrooms: 11, attrs__furnishing: 1 });
     expect(result.warnings).toContainEqual(
       expect.objectContaining({ field: 'pin_attrs.furnishing' }),
     );
+  });
+
+  it('accepts pin_attrs keys that already carry the attrs__ prefix', () => {
+    const result = mapListing(
+      listing({ attributes: { type: 'House' }, pin_attrs: { attrs__bedrooms: 11 } }),
+      ctx,
+    );
+    expect(result.errors).toEqual([]);
+    expect(result.warnings).not.toContainEqual(
+      expect.objectContaining({ field: 'pin_attrs.attrs__bedrooms' }),
+    );
+    expect(result.payload?.attrs).toEqual({ attrs__type: 1, attrs__bedrooms: 11 });
   });
 
   it('uses contact overrides and the link', () => {

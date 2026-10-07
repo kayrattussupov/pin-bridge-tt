@@ -200,7 +200,7 @@ describe('publishing listings', () => {
     expect(item).toMatchObject({
       external_id: `${slug}.L1`,
       title: '2-bedroom apartment in Valsayn',
-      attrs: { type: 2, bedrooms: 2 },
+      attrs: { attrs__type: 2, attrs__bedrooms: 2 },
     });
     expect(item.images).toHaveLength(2);
     expect(item.user.name).toBe('John Doe');
