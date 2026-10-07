@@ -26,6 +26,9 @@ export const phoneVerifyConfirmSchema = z.looseObject({
 
 export const picSchema = z.looseObject({ id });
 
+/** GET /users/profile/: the account the token belongs to (verified on prod 2026-10-07). */
+export const pinProfileSchema = z.looseObject({ id });
+
 /** Moderation status of an item: 0 published, 1 on review, 2 hidden, 3 rejected, 4 blocked. */
 export const PIN_ITEM_STATUS = {
   published: 0,

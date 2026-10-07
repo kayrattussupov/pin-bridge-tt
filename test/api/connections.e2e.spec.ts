@@ -138,6 +138,13 @@ describe('POST /v1/connections (SMS flow)', () => {
     expect(fake.control.state.deviceKeys.has(auth.deviceKey)).toBe(true);
   });
 
+  it('records which Pin account the number belongs to', async () => {
+    const { creds } = await t.newAgency();
+    const { id, phone } = await connected(creds);
+    const row = await t.prisma.connection.findUniqueOrThrow({ where: { id } });
+    expect(row.pinUserId).toBe(String(fake.control.state.users.get(phone.slice(1))!.id));
+  });
+
   it('is idempotent for an active number: no second SMS', async () => {
     const { creds } = await t.newAgency();
     const { id, phone } = await connected(creds);

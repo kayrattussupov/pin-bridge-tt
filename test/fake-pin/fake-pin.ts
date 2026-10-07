@@ -566,6 +566,14 @@ export function buildFakePin(options: FakePinOptions = {}): {
         return { status: 0 };
       });
 
+      api.get('/users/profile/', async (req, reply) => {
+        const user = requireUser(req, reply);
+        if (!user) {
+          return reply;
+        }
+        return { id: user.id, name: user.name ?? '', phone: `+${user.phone}`, banned: false };
+      });
+
       api.get('/items/front_my/', async (req, reply) => {
         const user = requireUser(req, reply);
         if (!user) {

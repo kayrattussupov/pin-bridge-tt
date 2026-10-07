@@ -16,6 +16,7 @@ import {
   phoneVerifyConfirmSchema,
   phoneVerifyRequestSchema,
   picSchema,
+  pinProfileSchema,
   pinItemListSchema,
   pinItemSchema,
 } from './pin.types';
@@ -172,6 +173,20 @@ export class PinClient {
       schema: phoneVerifyConfirmSchema,
     });
     return body.token;
+  }
+
+  /** Id of the Pin account the token belongs to. */
+  async getProfileId(auth: PinAuth): Promise<string> {
+    const body = await this.call({
+      endpoint: 'users.profile',
+      method: 'GET',
+      path: '/users/profile/',
+      ...this.authOf(auth),
+      retry: 'safe',
+      idempotent: true,
+      schema: pinProfileSchema,
+    });
+    return body.id;
   }
 
   // ---------------------------------------------------------------------------

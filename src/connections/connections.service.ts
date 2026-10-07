@@ -210,6 +210,10 @@ export class ConnectionsService {
     }
     const { connection, issued } = result.value;
     if (issued) {
+      await this.recordPinUserId(connection.id, {
+        deviceKey: issued.device_key,
+        token: issued.token,
+      });
       await this.resumeListings(connection.id);
     }
     return { connection: this.view(connection), pinCredentials: issued };
@@ -269,6 +273,34 @@ export class ConnectionsService {
       ),
       token: this.encryption.decryptString(connection.pinTokenEnc, tokenContext(connectionId)),
     };
+  }
+
+  /**
+   * Stores which Pin account the connection's token belongs to (once, while it is unknown) and
+   * warns when another active connection uses the same account. Best effort: a failure here never
+   * blocks connecting or publishing.
+   */
+  async recordPinUserId(connectionId: string, auth?: PinAuth): Promise<void> {
+    try {
+      const connection = await this.prisma.connection.findUnique({ where: { id: connectionId } });
+      if (!connection || connection.pinUserId) {
+        return;
+      }
+      const pinUserId = await this.pin.getProfileId(auth ?? (await this.authFor(connectionId)));
+      await this.prisma.connection.update({ where: { id: connectionId }, data: { pinUserId } });
+      const shared = await this.prisma.connection.findMany({
+        where: { pinUserId, status: 'active', id: { not: connectionId } },
+        select: { id: true, agencyId: true },
+      });
+      if (shared.length) {
+        this.logger.warn(
+          { connectionId, pinUserId, sharedWith: shared },
+          'pin account is connected more than once',
+        );
+      }
+    } catch (error) {
+      this.logger.warn({ connectionId, err: error }, 'could not read the pin account id');
+    }
   }
 
   /**
