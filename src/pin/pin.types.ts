@@ -35,37 +35,60 @@ export const PIN_ITEM_STATUS = {
   blocked: 4,
 } as const;
 
-const STATUS_KEYS = ['id', 'value', 'code', 'status'] as const;
-
 /**
- * POST /items/ returns `status` as a number, but prod front_my returns an object there (seen
- * 2026-10-07, exact shape not captured yet). Take the numeric code from either form; anything
- * unrecognised becomes undefined so one odd item cannot fail the whole status poll.
+ * Prod front_my returns `status` as an object, not the number POST /items/ gives (2026-10-07):
+ * `{"status": ["Pending for review", "Active until …"], "code": "status_check", "comment": "", …}`.
+ * Only `status_check` is verified; the other codes are guesses from their names. Unknown codes
+ * map to undefined (the previous status is kept) and are logged by the status sync.
  */
-function pinStatusCode(value: unknown): number | undefined {
-  const asCode = (v: unknown): number | undefined => {
-    const n = typeof v === 'string' && v.trim() !== '' ? Number(v) : v;
-    return typeof n === 'number' && Number.isInteger(n) && n >= 0 && n <= 4 ? n : undefined;
-  };
-  if (value !== null && typeof value === 'object') {
-    for (const key of STATUS_KEYS) {
-      const code = asCode((value as Record<string, unknown>)[key]);
-      if (code !== undefined) {
-        return code;
-      }
-    }
-    return undefined;
-  }
-  return asCode(value);
+const FRONT_MY_STATUS_CODES: Record<string, number> = {
+  status_check: PIN_ITEM_STATUS.onModeration,
+  active: PIN_ITEM_STATUS.published,
+  published: PIN_ITEM_STATUS.published,
+  hidden: PIN_ITEM_STATUS.hidden,
+  inactive: PIN_ITEM_STATUS.hidden,
+  deactivated: PIN_ITEM_STATUS.hidden,
+  rejected: PIN_ITEM_STATUS.rejected,
+  declined: PIN_ITEM_STATUS.rejected,
+  blocked: PIN_ITEM_STATUS.blocked,
+  banned: PIN_ITEM_STATUS.blocked,
+};
+
+const statusObjectSchema = z.looseObject({
+  code: z.string().optional(),
+  comment: z.string().nullable().optional(),
+  status: z.array(z.string()).optional(),
+});
+
+function numericStatus(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 4
+    ? value
+    : undefined;
 }
 
-export const pinItemSchema = z.looseObject({
-  id,
-  status: z.unknown().optional().transform(pinStatusCode),
-  not_paid: z.boolean().optional(),
-  moderator_comment: z.string().nullable().optional(),
-  external_id: z.string().nullable().optional(),
-});
+export const pinItemSchema = z
+  .looseObject({
+    id,
+    status: z.unknown().optional(),
+    not_paid: z.boolean().nullable().optional(),
+    moderator_comment: z.string().nullable().optional(),
+    external_id: z.string().nullable().optional(),
+  })
+  .transform((item) => {
+    const detail = statusObjectSchema.safeParse(item.status);
+    if (!detail.success || item.status === null || typeof item.status !== 'object') {
+      return { ...item, status: numericStatus(item.status) };
+    }
+    const code = detail.data.code;
+    return {
+      ...item,
+      status: code === undefined ? undefined : FRONT_MY_STATUS_CODES[code],
+      moderator_comment: item.moderator_comment ?? (detail.data.comment || null),
+      /** Pin's raw status code and labels, kept for logging codes we cannot map yet. */
+      status_code: code,
+      status_text: detail.data.status,
+    };
+  });
 export type PinItem = z.infer<typeof pinItemSchema>;
 
 /** front_my may be a bare array or a paginated `{results, next}` envelope; accept both. */

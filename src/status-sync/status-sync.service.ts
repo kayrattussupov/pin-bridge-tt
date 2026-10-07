@@ -150,6 +150,17 @@ export class StatusSyncService {
         continue;
       }
 
+      if (item.status === undefined && 'status_code' in item) {
+        this.logger.warn(
+          {
+            listingId: listing.id,
+            itemId: item.id,
+            code: item.status_code,
+            text: item.status_text,
+          },
+          'unknown pin status code, keeping the previous status',
+        );
+      }
       const after = {
         pinStatus: item.status ?? listing.pinStatus,
         notPaid: item.not_paid ?? listing.notPaid,
