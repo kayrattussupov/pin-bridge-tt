@@ -45,17 +45,18 @@ All requests are signed as described in [agency-api-auth.md](agency-api-auth.md)
 | `coordinates`  | Optional `{lat, lng}`.                                                                  |
 | `images`       | HTTPS URLs of JPEG/PNG photos. Pin shows at most 16; long side 1600 px or more is best. |
 | `contact.name` | Seller name shown on Pin. Defaults to the connection's `display_name`. See below.       |
-| `link`         | Optional link back to the listing on your site. Not allowed in `residential_sale`.      |
+| `link`         | Optional link back to the listing on your site. Dropped in `residential_sale`.         |
 | `attributes`   | Category attributes with readable values, see below.                                    |
 | `pin_attrs`    | Advanced: raw Pin `attrs` (slug or `attrs__slug` → variant key), over `attributes`.     |
 
 Unknown fields are rejected, so a typo cannot silently drop data.
 
+Pin refuses any link in `residential_sale` ("Item link not allowed in this category"), so Pin Bridge
+does not send `link` there and returns a `link_not_allowed` warning instead.
+
 Pin's own rules, checked only by Pin when the listing is published (the listing then fails with
 `pin_rejected` and Pin's message in `last_error.pin_errors`):
 
-- `link`: Pin refuses any link in `residential_sale` ("Item link not allowed in this category").
-  Leave it out for sales.
 - `contact.name`: Pin rejects names that look like placeholders: a single letter, only numbers or
   symbols, or a single generic word such as "seller", "owner", "user", "admin", "test", or a brand
   ("apple", "toyota"). Send the agent's or the agency's real name.

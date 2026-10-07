@@ -250,6 +250,15 @@ export function mapListing(listing: ListingInput, ctx: MappingContext): MappingR
       });
     }
   }
+  // Pin refuses any item_link in residential sale ("Item link not allowed in this category").
+  const linkAllowed = listing.category !== 'residential_sale';
+  if (listing.link && !linkAllowed) {
+    warnings.push({
+      field: 'link',
+      code: 'link_not_allowed',
+      message: 'Pin does not allow a link in residential sale listings; it is not sent.',
+    });
+  }
   if (listing.category === 'residential_sale' || listing.price > RENT_PAID_THRESHOLD) {
     warnings.push({ field: 'price', code: 'may_be_paid', message: PAID_RULES[listing.category] });
   }
@@ -274,7 +283,7 @@ export function mapListing(listing: ListingInput, ctx: MappingContext): MappingR
     phone_hide: listing.contact.hide_phone,
     negotiable_price: listing.negotiable_price,
     external_id: pinExternalId(ctx.agencySlug, listing.external_id),
-    item_link: listing.link ?? '',
+    item_link: linkAllowed ? (listing.link ?? '') : '',
     attrs: pinAttrs(attrs),
   };
   return { errors, warnings, payload, imageUrls };

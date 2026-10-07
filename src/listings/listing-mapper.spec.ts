@@ -137,6 +137,17 @@ describe('mapListing', () => {
     });
   });
 
+  it('drops the link in residential sale and warns', () => {
+    const result = mapListing(
+      listing({ category: 'residential_sale', link: 'https://duck.tt/l/8842' }),
+      ctx,
+    );
+    expect(result.payload?.item_link).toBe('');
+    expect(result.warnings).toContainEqual(
+      expect.objectContaining({ field: 'link', code: 'link_not_allowed' }),
+    );
+  });
+
   it('checks districts against the region', () => {
     const districts = [{ id: 1701, name: 'Valsayn' }];
     const ok = mapListing(listing({ district_ids: [1701] }), { ...ctx, districts });
