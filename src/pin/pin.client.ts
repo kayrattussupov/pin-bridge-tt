@@ -246,11 +246,11 @@ export class PinClient {
     });
   }
 
-  /** Full edit; sending the same body twice gives the same result. */
+  /** Full edit: PATCH with the whole body; sending the same body twice gives the same result. */
   async updateItem(auth: PinAuth, itemId: string, payload: CreateItemPayload): Promise<PinItem> {
     return this.call({
       endpoint: 'items.update',
-      method: 'POST',
+      method: 'PATCH',
       path: `/items/${encodeURIComponent(itemId)}/`,
       json: payload,
       ...this.authOf(auth),

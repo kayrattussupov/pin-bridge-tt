@@ -125,7 +125,7 @@ case "$cmd" in
   update)
     [ $# -eq 2 ] || usage
     mapfile -t data < <(body_of "$2")
-    json POST "/items/$1/" "${data[@]}"
+    json PATCH "/items/$1/" "${data[@]}"
     ;;
   patch)
     [ $# -eq 2 ] || usage
