@@ -515,7 +515,7 @@ export function buildFakePin(options: FakePinOptions = {}): {
         return reply.code(201).send(serialize(item));
       });
 
-      api.post('/items/:id/', async (req, reply) => {
+      api.patch('/items/:id/', async (req, reply) => {
         const item = ownedItem(req, reply);
         if (!item) {
           return reply;

@@ -265,6 +265,7 @@ describe('PinClient against fake-pin', () => {
       expect(patched).toMatchObject({ id: created.id, price: 3200 });
       const updated = await client.updateItem(auth, created.id, rentItem({ title: 'New title' }));
       expect(updated).toMatchObject({ title: 'New title' });
+      expect(fake.control.callCount('PATCH /items/:id/')).toBe(1);
 
       await client.toggleActive(auth, created.id);
       fake.control.setModeration(Number(created.id), 0);
