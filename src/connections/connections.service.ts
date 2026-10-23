@@ -289,6 +289,7 @@ export class ConnectionsService {
         deviceKeyContext(connectionId),
       ),
       token: this.encryption.decryptString(connection.pinTokenEnc, tokenContext(connectionId)),
+      connectionId,
     };
   }
 

@@ -22,6 +22,7 @@ export const DICTIONARY_SYNC_INTERVAL_MS = 24 * 3600 * 1000;
 export const SYSTEM_JOBS = {
   heartbeat: 'heartbeat',
   reconcile: 'reconcile',
+  prunePinResponses: 'prune-pin-responses',
 } as const;
 
 export const WORKER_HEARTBEAT_KEY = 'pin-bridge:worker:heartbeat';

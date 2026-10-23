@@ -166,6 +166,25 @@ published, 24 h for hidden, rejected and blocked.
    the error carries `outcomeUnknown: true`, and the caller must check `front_my` by
    `external_id` before trying again.
 
+### Raw Pin answers
+
+The answers to item create, update, partial update, toggle, removal and `front_my` are kept in
+the `pin_responses` table exactly as Pin sent them: every attempt, failures included, with the
+connection, item id, HTTP status, outcome and duration. Fields named like credentials (`token`,
+`api_key`, `secret`, ...) are replaced by `[REDACTED]`; request headers are never stored. Rows
+older than `PIN_RESPONSE_RETENTION_DAYS` (default 30) are deleted hourly by the worker; `0` turns
+recording off. Connection, dictionary, upload and `validate_ad` calls are not recorded.
+
+What Pin said about one item, in order:
+
+```bash
+docker compose exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"' <<'SQL'
+select created_at, endpoint, attempt, http_status, outcome, jsonb_pretty(body) from pin_responses
+where item_id = '658143' or (endpoint = 'items.front_my' and body::text like '%658143%')
+order by created_at;
+SQL
+```
+
 ### fake-pin
 
 `test/fake-pin/` is an in-memory imitation of the Pin API, built from what Pin's developer
