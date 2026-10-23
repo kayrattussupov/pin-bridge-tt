@@ -81,14 +81,19 @@ export const pinItemSchema = z
   })
   .transform((item) => {
     const detail = statusObjectSchema.safeParse(item.status);
+    // POST /items/ answers `moderator_comment: ""` and front_my `comment: ""`: no comment is null.
     if (!detail.success || item.status === null || typeof item.status !== 'object') {
-      return { ...item, status: numericStatus(item.status) };
+      return {
+        ...item,
+        status: numericStatus(item.status),
+        moderator_comment: item.moderator_comment || null,
+      };
     }
     const code = detail.data.code;
     return {
       ...item,
       status: code === undefined ? undefined : FRONT_MY_STATUS_CODES[code.replace(/^status_/, '')],
-      moderator_comment: item.moderator_comment ?? (detail.data.comment || null),
+      moderator_comment: item.moderator_comment || detail.data.comment || null,
       /** Pin's raw status code and labels, kept for logging codes we cannot map yet. */
       status_code: code,
       status_text: detail.data.status,
