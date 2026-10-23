@@ -41,6 +41,14 @@ describe('pinItemSchema status', () => {
     expect(item).toMatchObject({ status: 3, moderator_comment: 'Photos do not match' });
   });
 
+  // POST /items/ answers `moderator_comment: ""` while front_my gives `comment: ""`; both must read
+  // the same, or the first status check reports a change that is not one (2026-10-23).
+  it('reads an empty moderator comment as null in both shapes', () => {
+    expect(pinItemSchema.parse({ id: 1, status: 1, moderator_comment: '' }).moderator_comment).toBeNull();
+    const fromFrontMy = pinItemSchema.parse({ ...frontMyItem, moderator_comment: '' });
+    expect(fromFrontMy.moderator_comment).toBeNull();
+  });
+
   it('leaves unknown or missing statuses undefined instead of failing the page', () => {
     const page = pinItemListSchema.parse({
       results: [

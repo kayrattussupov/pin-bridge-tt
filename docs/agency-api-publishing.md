@@ -85,6 +85,7 @@ returns `422 idempotency_key_reused`.
 | `mapping_failed`             | Pin changed its attribute form since you sent the listing. `PUT` it again.          |
 | `image_unavailable`          | A photo stayed unreachable through all retries. Check the URL and `PUT` again.      |
 | `pin_unavailable`            | Pin stayed unavailable through all retries. `PUT` again later.                      |
+| `deleted_on_pin`             | The item disappeared from Pin (owner or moderation). `PUT` again to republish.      |
 
 Temporary problems (Pin or your photo host briefly unavailable) are retried automatically for
 about an hour. While that happens, `sync_state` stays `queued` and `last_error.will_retry` is
