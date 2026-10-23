@@ -90,19 +90,24 @@ enum ConnectionStatus {
 }
 
 model Connection {
-  id                String           @id @default(uuid()) @db.Uuid
-  agencyId          String           @map("agency_id") @db.Uuid
-  phoneE164         String           @map("phone_e164")
-  displayName       String           @map("display_name")
-  pinDeviceKeyEnc   Bytes?           @map("pin_device_key_enc")
-  pinTokenEnc       Bytes?           @map("pin_token_enc")
-  pinUserId         String?          @map("pin_user_id")
-  status            ConnectionStatus @default(pending_code)
-  smsCooldownUntil  DateTime?        @map("sms_cooldown_until")
-  smsRequestsWindow DateTime[]       @default([]) @map("sms_requests_window")
-  confirmAttempts   Int              @default(0) @map("confirm_attempts")
-  createdAt         DateTime         @default(now()) @map("created_at")
-  updatedAt         DateTime         @updatedAt @map("updated_at")
+  id                 String           @id @default(uuid()) @db.Uuid
+  agencyId           String           @map("agency_id") @db.Uuid
+  phoneE164          String           @map("phone_e164")
+  displayName        String           @map("display_name")
+  pinDeviceKeyEnc    Bytes?           @map("pin_device_key_enc")
+  pinTokenEnc        Bytes?           @map("pin_token_enc")
+  pinUserId          String?          @map("pin_user_id")
+  /// Name fields of the Pin account profile (GET /users/profile/); nothing else is kept.
+  pinName            String?          @map("pin_name")
+  pinLegalName       String?          @map("pin_legal_name")
+  pinCompanyName     String?          @map("pin_company_name")
+  pinProfileSyncedAt DateTime?        @map("pin_profile_synced_at")
+  status             ConnectionStatus @default(pending_code)
+  smsCooldownUntil   DateTime?        @map("sms_cooldown_until")
+  smsRequestsWindow  DateTime[]       @default([]) @map("sms_requests_window")
+  confirmAttempts    Int              @default(0) @map("confirm_attempts")
+  createdAt          DateTime         @default(now()) @map("created_at")
+  updatedAt          DateTime         @updatedAt @map("updated_at")
 
   agency   Agency    @relation(fields: [agencyId], references: [id], onDelete: Cascade)
   listings Listing[]
@@ -143,6 +148,8 @@ model Listing {
   pinStatus         Int?         @map("pin_status")
   notPaid           Boolean?     @map("not_paid")
   moderatorComment  String?      @map("moderator_comment")
+  /// Seller name (`user.name`) the item was last sent to Pin with.
+  pinSellerName     String?      @map("pin_seller_name")
   lastError         Json?        @map("last_error")
   /// Mapping warnings from the last accepted version (shown to the agency).
   warnings          Json?

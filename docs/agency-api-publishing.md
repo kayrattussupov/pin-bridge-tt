@@ -51,7 +51,8 @@ returns `422 idempotency_key_reused`.
     "item_id": "48213",
     "status": "published",
     "not_paid": false,
-    "moderator_comment": null
+    "moderator_comment": null,
+    "seller_name": "Darcell Taylor"
   },
   "images": [
     { "url": "https://cdn.your-agency.tt/8842/1.jpg", "status": "uploaded", "error": null }
@@ -70,6 +71,8 @@ returns `422 idempotency_key_reused`.
   `blocked`. Pin moderates after publishing, so this can change later.
 - `pin.not_paid`: `true` means Pin created the item but shows it only after payment from the
   account balance (paid categories).
+- `pin.seller_name`: the seller name (`user.name`) the item was sent to Pin with: the listing's
+  `contact.name`, or else the connection's `seller_name`. `null` before the first send.
 - `live`: `true` only when buyers can see the listing (`published` and not waiting for payment).
 
 ## Failures

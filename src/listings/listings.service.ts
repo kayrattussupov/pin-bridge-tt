@@ -3,6 +3,7 @@ import { HttpStatus, Injectable } from '@nestjs/common';
 import type { AgencyContext } from '../auth/agency-context';
 import { ApiError } from '../common/api-error';
 import { ConnectionsService } from '../connections/connections.service';
+import { sellerNameOf } from '../connections/seller-name';
 import { PrismaService } from '../database/prisma.service';
 import { Prisma } from '../generated/prisma/client';
 import type { DesiredState, Listing, SyncState } from '../generated/prisma/client';
@@ -77,7 +78,7 @@ export class ListingsService {
     const mapping = await this.validation.map(
       agency,
       { ...record, external_id: externalId },
-      connection.displayName,
+      sellerNameOf(connection),
     );
     if (mapping.errors.length || !mapping.listing) {
       throw new ApiError(

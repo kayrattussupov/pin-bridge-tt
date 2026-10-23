@@ -44,7 +44,7 @@ All requests are signed as described in [agency-api-auth.md](agency-api-auth.md)
 | `district_ids` | Optional; ids from `GET /v1/dictionaries/regions/{region}/districts`.                   |
 | `coordinates`  | Optional `{lat, lng}`.                                                                  |
 | `images`       | HTTPS URLs of JPEG/PNG photos. Pin shows at most 16; long side 1600 px or more is best. |
-| `contact.name` | Seller name shown on Pin. Defaults to the connection's `display_name`. See below.       |
+| `contact.name` | Seller name shown on Pin. Optional: without it the connection's `seller_name` is used (the legal name of the Pin account). See below. |
 | `link`         | Optional link back to the listing on your site. Dropped in `residential_sale`.         |
 | `attributes`   | Category attributes with readable values, see below.                                    |
 | `pin_attrs`    | Advanced: raw Pin `attrs` (slug or `attrs__slug` → variant key), over `attributes`.     |

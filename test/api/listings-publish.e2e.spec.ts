@@ -204,6 +204,26 @@ describe('publishing listings', () => {
     });
     expect(item.images).toHaveLength(2);
     expect(item.user.name).toBe('John Doe');
+    expect(done.pin.seller_name).toBe('John Doe');
+  });
+
+  it('sends the legal name of the Pin account as seller name; contact.name overrides it', async () => {
+    fake.control.state.profileDefaults = {
+      name: 'Illia',
+      legalName: 'Darcell Taylor',
+      companyName: 'Pin.tt',
+    };
+    const { creds, connectionId } = await setup();
+
+    await api(creds, connectionId).put('L1', listing());
+    const first = await settled(creds, connectionId, 'L1');
+    expect(pinItemOf(first)!.user.name).toBe('Darcell Taylor');
+    expect(first.pin.seller_name).toBe('Darcell Taylor');
+
+    await api(creds, connectionId).put('L2', listing({ contact: { name: 'Jane Agent' } }));
+    const second = await settled(creds, connectionId, 'L2');
+    expect(pinItemOf(second)!.user.name).toBe('Jane Agent');
+    expect(second.pin.seller_name).toBe('Jane Agent');
   });
 
   it('answers 200 and does nothing when the same listing is sent again', async () => {

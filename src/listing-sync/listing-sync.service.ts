@@ -3,6 +3,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import type { AgencyContext } from '../auth/agency-context';
 import { ApiError } from '../common/api-error';
 import { ConnectionNotActiveError, ConnectionsService } from '../connections/connections.service';
+import { sellerNameOf } from '../connections/seller-name';
 import { PrismaService } from '../database/prisma.service';
 import { Prisma } from '../generated/prisma/client';
 import type { Agency, Connection, Listing, ListingImage } from '../generated/prisma/client';
@@ -140,10 +141,14 @@ export class ListingSyncService {
 
   private async publish(listing: FullListing): Promise<ListingIssue[]> {
     const auth = await this.auth(listing);
+    // Read after auth(): that call may have just stored the Pin profile names.
+    const connection = await this.prisma.connection.findUniqueOrThrow({
+      where: { id: listing.connectionId },
+    });
     const mapping = await this.validation.map(
       this.agencyContext(listing),
       listing.payload,
-      listing.connection.displayName,
+      sellerNameOf(connection),
     );
     if (mapping.errors.length || !mapping.payload) {
       // Pin's form changed since the listing was accepted.
@@ -171,7 +176,7 @@ export class ListingSyncService {
     if (itemId && listing.syncedPinHash !== pinHash) {
       try {
         item = await this.pin.updateItem(auth, itemId, payload);
-        await this.saveItem(listing.id, item, { pinHash });
+        await this.saveItem(listing.id, item, { pinHash, sellerName: payload.user.name });
       } catch (error) {
         if (!(isPinError(error) && error.kind === 'not_found')) {
           throw error;
@@ -188,7 +193,14 @@ export class ListingSyncService {
     if (!itemId) {
       item = await this.create(listing, auth, payload);
       itemId = item.id;
-      await this.saveItem(listing.id, item, { pinHash, createUnknown: false });
+      await this.saveItem(listing.id, item, {
+        pinHash,
+        createUnknown: false,
+        sellerName: payload.user.name,
+      });
+    } else if (listing.pinSellerName === null && listing.syncedPinHash === pinHash) {
+      // Published before the seller name was recorded; the hash covers `user`, so it is the same.
+      await this.saveItem(listing.id, undefined, { sellerName: payload.user.name });
     }
 
     await this.applyVisibility(listing, auth, itemId, item);
@@ -264,7 +276,7 @@ export class ListingSyncService {
   private async saveItem(
     listingId: string,
     item: PinItem | undefined,
-    extra: { pinHash?: string | null; createUnknown?: boolean },
+    extra: { pinHash?: string | null; createUnknown?: boolean; sellerName?: string },
   ): Promise<void> {
     await this.prisma.listing.update({
       where: { id: listingId },
@@ -279,6 +291,7 @@ export class ListingSyncService {
           : {}),
         ...(extra.pinHash !== undefined ? { syncedPinHash: extra.pinHash } : {}),
         ...(extra.createUnknown !== undefined ? { createUnknown: extra.createUnknown } : {}),
+        ...(extra.sellerName !== undefined ? { pinSellerName: extra.sellerName } : {}),
       },
     });
   }
@@ -411,8 +424,8 @@ export class ListingSyncService {
 
   private async auth(listing: FullListing): Promise<PinAuth> {
     const auth = await this.connections.authFor(listing.connectionId);
-    // Fills pin_user_id for connections made before it was recorded (no-op once it is set).
-    await this.connections.recordPinUserId(listing.connectionId, auth);
+    // Keeps the Pin account id and names up to date (reads the profile at most once a day).
+    await this.connections.syncPinProfile(listing.connectionId, auth);
     return auth;
   }
 

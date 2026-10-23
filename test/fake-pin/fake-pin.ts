@@ -69,6 +69,8 @@ interface User {
   phone: string;
   token: string;
   name?: string;
+  legalName?: string;
+  companyName?: string;
 }
 
 export const RUBRIC_FORMS: Record<number, unknown> = {
@@ -199,6 +201,8 @@ export class FakePinState {
   readonly calls: { route: string; deviceKey?: string; authorization?: string }[] = [];
   cloudflareAll = false;
   nextId = 1000;
+  /** Name fields given to accounts created from now on (the profile answers with them). */
+  profileDefaults: Pick<User, 'name' | 'legalName' | 'companyName'> = {};
 }
 
 export interface FakePinControl {
@@ -442,7 +446,12 @@ export function buildFakePin(options: FakePinOptions = {}): {
         }
         let user = state.users.get(number);
         if (!user) {
-          user = { id: state.nextId++, phone: number, token: randomUUID().replace(/-/g, '') };
+          user = {
+            id: state.nextId++,
+            phone: number,
+            token: randomUUID().replace(/-/g, ''),
+            ...state.profileDefaults,
+          };
           state.users.set(number, user);
         }
         return token === '1' ? { status: 0, token: user.token } : { status: 0 };
@@ -571,7 +580,14 @@ export function buildFakePin(options: FakePinOptions = {}): {
         if (!user) {
           return reply;
         }
-        return { id: user.id, name: user.name ?? '', phone: `+${user.phone}`, banned: false };
+        return {
+          id: user.id,
+          name: user.name ?? '',
+          legal_name: user.legalName ?? null,
+          company_name: user.companyName ?? null,
+          phone: `+${user.phone}`,
+          banned: false,
+        };
       });
 
       api.get('/items/front_my/', async (req, reply) => {

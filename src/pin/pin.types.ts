@@ -26,8 +26,28 @@ export const phoneVerifyConfirmSchema = z.looseObject({
 
 export const picSchema = z.looseObject({ id });
 
-/** GET /users/profile/: the account the token belongs to (verified on prod 2026-10-07). */
-export const pinProfileSchema = z.looseObject({ id });
+const blankToNull = (value: string | null | undefined): string | null => value?.trim() || null;
+
+/**
+ * GET /users/profile/: the account the token belongs to (verified on prod 2026-10-07). Only the
+ * id and the name fields are read; prod (2026-10-23) has `name` (the display name, "Illia"),
+ * `legal_name` ("Darcell Taylor") and `company_name` ("Pin.tt"). Email, phone and balance are
+ * deliberately not kept.
+ */
+export const pinProfileSchema = z
+  .looseObject({
+    id,
+    name: z.string().nullish(),
+    legal_name: z.string().nullish(),
+    company_name: z.string().nullish(),
+  })
+  .transform((profile) => ({
+    id: profile.id,
+    name: blankToNull(profile.name),
+    legalName: blankToNull(profile.legal_name),
+    companyName: blankToNull(profile.company_name),
+  }));
+export type PinProfile = z.infer<typeof pinProfileSchema>;
 
 /** Moderation status of an item: 0 published, 1 on review, 2 hidden, 3 rejected, 4 blocked. */
 export const PIN_ITEM_STATUS = {

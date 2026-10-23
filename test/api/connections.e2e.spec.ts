@@ -145,6 +145,47 @@ describe('POST /v1/connections (SMS flow)', () => {
     expect(row.pinUserId).toBe(String(fake.control.state.users.get(phone.slice(1))!.id));
   });
 
+  it('shows under which Pin user the number was connected', async () => {
+    const { creds } = await t.newAgency();
+    fake.control.state.profileDefaults = {
+      name: 'Illia',
+      legalName: 'Darcell Taylor',
+      companyName: 'Pin.tt',
+    };
+    const phone = nextPhone();
+    const started = json(await api(creds).start({ phone, display_name: 'John Doe' }));
+    expect(started).toMatchObject({ pin_account: null, seller_name: 'John Doe' });
+
+    const ok = json(await api(creds).confirm(started.id as string, fake.control.smsCode()));
+    const pinUser = fake.control.state.users.get(phone.slice(1))!;
+    const account = {
+      id: String(pinUser.id),
+      name: 'Illia',
+      legal_name: 'Darcell Taylor',
+      company_name: 'Pin.tt',
+      synced_at: expect.any(String),
+    };
+    expect(ok).toMatchObject({
+      status: 'active',
+      display_name: 'John Doe',
+      pin_account: account,
+      seller_name: 'Darcell Taylor',
+    });
+    expect(json(await api(creds).get(started.id as string))).toMatchObject({
+      pin_account: account,
+      seller_name: 'Darcell Taylor',
+    });
+  });
+
+  it('falls back to the name given at connecting when the profile has no names', async () => {
+    const { creds } = await t.newAgency();
+    const { id } = await connected(creds);
+    expect(json(await api(creds).get(id))).toMatchObject({
+      pin_account: { name: null, legal_name: null, company_name: null },
+      seller_name: 'John Doe',
+    });
+  });
+
   it('is idempotent for an active number: no second SMS', async () => {
     const { creds } = await t.newAgency();
     const { id, phone } = await connected(creds);
