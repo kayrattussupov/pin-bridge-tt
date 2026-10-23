@@ -5,7 +5,7 @@ import { mapListing, pinExternalId } from './listing-mapper';
 import { ListingInput, listingSchema } from './listing.schema';
 
 const form = parseRubricForm(21, RUBRIC_FORMS[21]);
-const ctx = { form, agencySlug: 'duck', displayName: 'Duck Realty' };
+const ctx = { form, agencySlug: 'duck', sellerName: 'Duck Realty' };
 
 function listing(overrides: Record<string, unknown> = {}): ListingInput {
   return listingSchema.parse({

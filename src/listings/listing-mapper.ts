@@ -21,8 +21,8 @@ export interface ListingIssue {
 export interface MappingContext {
   form: RubricForm;
   agencySlug: string;
-  /** Default seller name: the connection's display name. */
-  displayName: string;
+  /** Default seller name (`user.name`) when the listing has no `contact.name`: see sellerNameOf. */
+  sellerName: string;
   /** Districts of the listing's region, when known. */
   districts?: District[];
 }
@@ -279,7 +279,7 @@ export function mapListing(listing: ListingInput, ctx: MappingContext): MappingR
     ...(listing.coordinates
       ? { coordinates: { latitude: listing.coordinates.lat, longitude: listing.coordinates.lng } }
       : {}),
-    user: { name: listing.contact.name ?? ctx.displayName, email: listing.contact.email ?? '' },
+    user: { name: listing.contact.name ?? ctx.sellerName, email: listing.contact.email ?? '' },
     phone_hide: listing.contact.hide_phone,
     negotiable_price: listing.negotiable_price,
     external_id: pinExternalId(ctx.agencySlug, listing.external_id),

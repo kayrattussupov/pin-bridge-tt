@@ -84,7 +84,7 @@ export class StatusSyncService {
       throw error;
     }
 
-    await this.connections.recordPinUserId(connectionId, auth);
+    await this.connections.syncPinProfile(connectionId, auth);
 
     let items: Map<string, PinItem>;
     let complete: boolean;

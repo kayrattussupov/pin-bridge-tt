@@ -18,6 +18,7 @@ import { ListingSyncQueue } from '../queue/listing-sync.queue';
 import { RedisService } from '../queue/redis.service';
 import { WebhookEvents } from '../webhooks/webhook-events';
 import { normalizeTtPhone } from './phone';
+import { sellerNameOf } from './seller-name';
 
 /** Pin's own limit: 5 SMS requests per device key per 10 minutes. We stop one step earlier. */
 const SMS_WINDOW_MS = 10 * 60 * 1000;
@@ -26,6 +27,8 @@ const SMS_PER_WINDOW = 5;
 const DEFAULT_SMS_COOLDOWN_SECONDS = 60;
 /** Longer than the slowest Pin call (connect + request timeouts), so the lock never lapses mid-call. */
 const LOCK_TTL_MS = 90_000;
+/** The Pin profile is read again when it is older than this (names can change on Pin). */
+const PROFILE_MAX_AGE_MS = 24 * 3600 * 1000;
 
 import { deviceKeyContext, tokenContext } from './secret-contexts';
 
@@ -41,6 +44,16 @@ export interface ConnectionView {
   id: string;
   phone: string;
   display_name: string;
+  /** The Pin account this connection publishes under; null until its profile has been read. */
+  pin_account: {
+    id: string;
+    name: string | null;
+    legal_name: string | null;
+    company_name: string | null;
+    synced_at: string;
+  } | null;
+  /** `user.name` of listings that bring no `contact.name`. */
+  seller_name: string;
   status: Connection['status'];
   resend_after_seconds: number;
   confirm_attempts_left: number | null;
@@ -209,14 +222,18 @@ export class ConnectionsService {
       throw this.busy();
     }
     const { connection, issued } = result.value;
+    let current = connection;
     if (issued) {
-      await this.recordPinUserId(connection.id, {
-        deviceKey: issued.device_key,
-        token: issued.token,
-      });
+      // The profile tells which Pin user the code logged in; the answer shows it to the agency.
+      current =
+        (await this.syncPinProfile(
+          connection.id,
+          { deviceKey: issued.device_key, token: issued.token },
+          { force: true },
+        )) ?? connection;
       await this.resumeListings(connection.id);
     }
-    return { connection: this.view(connection), pinCredentials: issued };
+    return { connection: this.view(current), pinCredentials: issued };
   }
 
   async get(agency: AgencyContext, connectionId: string): Promise<ConnectionView> {
@@ -276,30 +293,55 @@ export class ConnectionsService {
   }
 
   /**
-   * Stores which Pin account the connection's token belongs to (once, while it is unknown) and
-   * warns when another active connection uses the same account. Best effort: a failure here never
-   * blocks connecting or publishing.
+   * Reads the Pin profile of the connection's account and stores the account id and its name
+   * fields: right after connecting (`force`), and then at most once a day. Warns when another
+   * active connection uses the same account. Best effort: a failure here never blocks connecting
+   * or publishing. Returns the connection as stored now, or null if the profile could not be read.
    */
-  async recordPinUserId(connectionId: string, auth?: PinAuth): Promise<void> {
+  async syncPinProfile(
+    connectionId: string,
+    auth?: PinAuth,
+    options: { force?: boolean } = {},
+  ): Promise<Connection | null> {
     try {
       const connection = await this.prisma.connection.findUnique({ where: { id: connectionId } });
-      if (!connection || connection.pinUserId) {
-        return;
+      if (!connection) {
+        return null;
       }
-      const pinUserId = await this.pin.getProfileId(auth ?? (await this.authFor(connectionId)));
-      await this.prisma.connection.update({ where: { id: connectionId }, data: { pinUserId } });
-      const shared = await this.prisma.connection.findMany({
-        where: { pinUserId, status: 'active', id: { not: connectionId } },
-        select: { id: true, agencyId: true },
+      const fresh =
+        connection.pinUserId &&
+        connection.pinProfileSyncedAt &&
+        Date.now() - connection.pinProfileSyncedAt.getTime() < PROFILE_MAX_AGE_MS;
+      if (fresh && !options.force) {
+        return connection;
+      }
+      const profile = await this.pin.getProfile(auth ?? (await this.authFor(connectionId)));
+      const updated = await this.prisma.connection.update({
+        where: { id: connectionId },
+        data: {
+          pinUserId: profile.id,
+          pinName: profile.name,
+          pinLegalName: profile.legalName,
+          pinCompanyName: profile.companyName,
+          pinProfileSyncedAt: new Date(),
+        },
       });
-      if (shared.length) {
-        this.logger.warn(
-          { connectionId, pinUserId, sharedWith: shared },
-          'pin account is connected more than once',
-        );
+      if (connection.pinUserId !== profile.id) {
+        const shared = await this.prisma.connection.findMany({
+          where: { pinUserId: profile.id, status: 'active', id: { not: connectionId } },
+          select: { id: true, agencyId: true },
+        });
+        if (shared.length) {
+          this.logger.warn(
+            { connectionId, pinUserId: profile.id, sharedWith: shared },
+            'pin account is connected more than once',
+          );
+        }
       }
+      return updated;
     } catch (error) {
-      this.logger.warn({ connectionId, err: error }, 'could not read the pin account id');
+      this.logger.warn({ connectionId, err: error }, 'could not read the pin profile');
+      return null;
     }
   }
 
@@ -561,6 +603,17 @@ export class ConnectionsService {
       id: connection.id,
       phone: connection.phoneE164,
       display_name: connection.displayName,
+      pin_account:
+        connection.pinUserId && connection.pinProfileSyncedAt
+          ? {
+              id: connection.pinUserId,
+              name: connection.pinName,
+              legal_name: connection.pinLegalName,
+              company_name: connection.pinCompanyName,
+              synced_at: connection.pinProfileSyncedAt.toISOString(),
+            }
+          : null,
+      seller_name: sellerNameOf(connection),
       status: connection.status,
       resend_after_seconds: this.secondsUntil(connection.smsCooldownUntil),
       confirm_attempts_left:

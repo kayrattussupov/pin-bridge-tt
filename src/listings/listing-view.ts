@@ -26,6 +26,8 @@ export interface ListingView {
     status: PinStatusName | null;
     not_paid: boolean | null;
     moderator_comment: string | null;
+    /** The seller name (`user.name`) the item was sent to Pin with; null before the first send. */
+    seller_name: string | null;
   };
   images: { url: string; status: ListingImage['status']; error: string | null }[];
   warnings: unknown[];
@@ -50,6 +52,7 @@ export function listingView(listing: Listing & { images?: ListingImage[] }): Lis
       status: pinStatusName(listing.pinStatus),
       not_paid: listing.notPaid,
       moderator_comment: listing.moderatorComment,
+      seller_name: listing.pinSellerName,
     },
     images: (listing.images ?? [])
       .slice()

@@ -41,7 +41,7 @@ export class ListingValidationService {
   async map(
     agency: AgencyContext,
     input: unknown,
-    displayName: string,
+    sellerName: string,
   ): Promise<MappingResult & { listing?: ReturnType<typeof listingSchema.parse> }> {
     const parsed = listingSchema.safeParse(input ?? {});
     if (!parsed.success) {
@@ -79,7 +79,7 @@ export class ListingValidationService {
         : undefined,
     ]);
     return {
-      ...mapListing(listing, { form, agencySlug: agency.agencySlug, displayName, districts }),
+      ...mapListing(listing, { form, agencySlug: agency.agencySlug, sellerName, districts }),
       listing,
     };
   }
@@ -93,12 +93,12 @@ export class ListingValidationService {
     input: unknown,
     connectionId?: string,
   ): Promise<ValidationReport> {
-    let displayName = agency.agencyName;
+    let sellerName = agency.agencyName;
     if (connectionId) {
       const connection = await this.connections.get(agency, connectionId);
-      displayName = connection.display_name;
+      sellerName = connection.seller_name;
     }
-    const mapping = await this.map(agency, input, displayName);
+    const mapping = await this.map(agency, input, sellerName);
     const report: ValidationReport = {
       valid: mapping.errors.length === 0,
       errors: mapping.errors,

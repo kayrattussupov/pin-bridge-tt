@@ -51,7 +51,8 @@ returns `422 idempotency_key_reused`.
     "item_id": "48213",
     "status": "published",
     "not_paid": false,
-    "moderator_comment": null
+    "moderator_comment": null,
+    "seller_name": "Darcell Taylor"
   },
   "images": [
     { "url": "https://cdn.your-agency.tt/8842/1.jpg", "status": "uploaded", "error": null }
@@ -70,6 +71,8 @@ returns `422 idempotency_key_reused`.
   `blocked`. Pin moderates after publishing, so this can change later.
 - `pin.not_paid`: `true` means Pin created the item but shows it only after payment from the
   account balance (paid categories).
+- `pin.seller_name`: the seller name (`user.name`) the item was sent to Pin with: the listing's
+  `contact.name`, or else the connection's `seller_name`. `null` before the first send.
 - `live`: `true` only when buyers can see the listing (`published` and not waiting for payment).
 
 ## Failures
@@ -82,7 +85,7 @@ returns `422 idempotency_key_reused`.
 | `mapping_failed`             | Pin changed its attribute form since you sent the listing. `PUT` it again.          |
 | `image_unavailable`          | A photo stayed unreachable through all retries. Check the URL and `PUT` again.      |
 | `pin_unavailable`            | Pin stayed unavailable through all retries. `PUT` again later.                      |
-| `deleted_on_pin`             | The item disappeared from Pin (owner or moderation). `PUT` again to republish.      |
+| `deleted_on_pin`             | The item is no longer in the account's active list on Pin: deleted or hidden (owner, Pin tools or moderation); Pin does not say which. `PUT` again to republish. |
 
 Temporary problems (Pin or your photo host briefly unavailable) are retried automatically for
 about an hour. While that happens, `sync_state` stays `queued` and `last_error.will_retry` is

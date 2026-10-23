@@ -23,6 +23,8 @@ POST /v1/connections               { "phone": "+1 868 723 4567", "display_name":
 
 POST /v1/connections/{id}/confirm  { "code": "1234" }
 → 200 { "id": "…", "status": "active", …,
+        "pin_account": { "id": "507689", "name": "Illia", "legal_name": "Darcell Taylor", "company_name": "Pin.tt", "synced_at": "…" },
+        "seller_name": "Darcell Taylor",
         "pin_credentials": { "device_key": "3919d512-…", "token": "0c712ed4…" } }
 ```
 
@@ -30,7 +32,27 @@ POST /v1/connections/{id}/confirm  { "code": "1234" }
 are what Pin expects as `Device-Api-Key: <device_key>` and `Authorization: Token <token>`. Store
 them on your server, encrypted; you do not need them to publish through Pin Bridge.
 
-`display_name` is the name buyers see on the listings.
+`display_name` is the name you give the connection. Buyers see `seller_name` (see below), unless a
+listing brings its own `contact.name`.
+
+## Which Pin user the number is
+
+Right after the code is accepted, Pin Bridge reads the profile of the Pin account (`GET /users/profile/`)
+and returns it as `pin_account` in the confirm answer and in every later `GET`. Show it to the person
+who connects, so they see under which Pin user the number was saved.
+
+| Field | Meaning |
+| --- | --- |
+| `pin_account.id` | Pin user id. |
+| `pin_account.name` | Display name of the account on Pin. |
+| `pin_account.legal_name` | Legal name of the account owner. |
+| `pin_account.company_name` | Company name of the account. |
+| `pin_account.synced_at` | When the profile was read; it is read again when older than a day. |
+| `seller_name` | The `user.name` of listings without `contact.name`: `legal_name`, else `name`, else `display_name`. |
+
+A name field is `null` when the profile has none. `pin_account` is `null` until the profile has been
+read (before the code is confirmed, or if Pin did not answer). Pin Bridge keeps only these name fields,
+not the email, phone or balance of the profile.
 
 Calling `POST /v1/connections` again for a number that is already `active` returns it with
 `200` and `"sms_sent": false`. No SMS is sent.

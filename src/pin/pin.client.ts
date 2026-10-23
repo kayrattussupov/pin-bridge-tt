@@ -11,6 +11,7 @@ import {
   PinAuth,
   PinItem,
   PinItemList,
+  PinProfile,
   UploadPictureInput,
   deviceKeySchema,
   phoneVerifyConfirmSchema,
@@ -175,9 +176,9 @@ export class PinClient {
     return body.token;
   }
 
-  /** Id of the Pin account the token belongs to. */
-  async getProfileId(auth: PinAuth): Promise<string> {
-    const body = await this.call({
+  /** The Pin account the token belongs to: its id and name fields. */
+  async getProfile(auth: PinAuth): Promise<PinProfile> {
+    return this.call({
       endpoint: 'users.profile',
       method: 'GET',
       path: '/users/profile/',
@@ -186,7 +187,6 @@ export class PinClient {
       idempotent: true,
       schema: pinProfileSchema,
     });
-    return body.id;
   }
 
   // ---------------------------------------------------------------------------

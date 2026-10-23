@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pinItemListSchema, pinItemSchema } from './pin.types';
+import { pinItemListSchema, pinItemSchema, pinProfileSchema } from './pin.types';
 
 // Copied from prod front_my (2026-10-07).
 const frontMyItem = {
@@ -60,5 +60,45 @@ describe('pinItemSchema status', () => {
     });
     expect(page.results.map((item) => item.status)).toEqual([undefined, undefined, undefined, 1]);
     expect(page.results[0]).toMatchObject({ status_code: 'something_new' });
+  });
+});
+
+describe('pinProfileSchema', () => {
+  // Name fields as GET /users/profile/ returned them on prod (2026-10-23).
+  const prodProfile = {
+    id: 507689,
+    name: 'Illia',
+    legal_name: 'Darcell Taylor',
+    company_name: 'Pin.tt',
+    email: null,
+    phone: '+18686813498',
+    balance: 166.9,
+  };
+
+  it('keeps the id and the three name fields, and nothing else', () => {
+    expect(pinProfileSchema.parse(prodProfile)).toEqual({
+      id: '507689',
+      name: 'Illia',
+      legalName: 'Darcell Taylor',
+      companyName: 'Pin.tt',
+    });
+  });
+
+  it('reads missing, null, empty and blank names as null', () => {
+    expect(pinProfileSchema.parse({ id: 1 })).toEqual({
+      id: '1',
+      name: null,
+      legalName: null,
+      companyName: null,
+    });
+    expect(
+      pinProfileSchema.parse({ id: 1, name: '', legal_name: '  ', company_name: null }),
+    ).toEqual({ id: '1', name: null, legalName: null, companyName: null });
+  });
+
+  it('trims names', () => {
+    expect(pinProfileSchema.parse({ id: 1, legal_name: ' Darcell Taylor ' }).legalName).toBe(
+      'Darcell Taylor',
+    );
   });
 });
