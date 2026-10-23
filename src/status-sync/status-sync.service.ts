@@ -18,11 +18,15 @@ const MAX_PAGES = 50;
 const LOCK_TTL_MS = 5 * 60_000;
 const RETRY_AFTER_ERROR_MS = 5 * 60_000;
 const INCOMPLETE_SCAN_RETRY_MS = 15 * 60_000;
+/** Connections whose Pin profile is read per tick (idle connections have no status check). */
+const PROFILES_PER_TICK = 5;
 
 export interface StatusTickResult {
   connections: number;
   checked: number;
   changed: number;
+  /** Connections whose Pin profile was read because it was missing or a day old. */
+  profiles: number;
 }
 
 /**
@@ -56,7 +60,7 @@ export class StatusSyncService {
       select: { connectionId: true },
       take: this.env.STATUS_SYNC_CONNECTIONS_PER_TICK,
     });
-    const result: StatusTickResult = { connections: 0, checked: 0, changed: 0 };
+    const result: StatusTickResult = { connections: 0, checked: 0, changed: 0, profiles: 0 };
     for (const { connectionId } of due) {
       const locked = await withRedisLock(
         this.redis,
@@ -70,6 +74,7 @@ export class StatusSyncService {
         result.changed += locked.value.changed;
       }
     }
+    result.profiles = await this.connections.refreshStaleProfiles(PROFILES_PER_TICK);
     return result;
   }
 

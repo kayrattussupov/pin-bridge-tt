@@ -73,7 +73,7 @@ export class StatusSyncProcessor extends WorkerHost implements OnApplicationBoot
 
   async process(): Promise<StatusTickResult> {
     const result = await this.statusSync.tick();
-    if (result.connections > 0) {
+    if (result.connections > 0 || result.profiles > 0) {
       this.logger.log(result, 'status sync');
     }
     return result;

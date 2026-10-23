@@ -50,6 +50,8 @@ who connects, so they see under which Pin user the number was saved.
 | `pin_account.synced_at` | When the profile was read; it is read again when older than a day. |
 | `seller_name` | The `user.name` of listings without `contact.name`: `legal_name`, else `name`, else `display_name`. |
 
+Connections with nothing to publish are refreshed by a background job (a few per minute), so `pin_account` fills in without a new SMS code.
+
 A name field is `null` when the profile has none. `pin_account` is `null` until the profile has been
 read (before the code is confirmed, or if Pin did not answer). Pin Bridge keeps only these name fields,
 not the email, phone or balance of the profile.

@@ -186,6 +186,40 @@ describe('POST /v1/connections (SMS flow)', () => {
     });
   });
 
+  it('reads the profile of an idle connection in the background, and does not hammer Pin', async () => {
+    const { creds } = await t.newAgency();
+    fake.control.state.profileDefaults = {
+      name: 'Illia',
+      legalName: 'Darcell Taylor',
+      companyName: 'Pin.tt',
+    };
+    const { id } = await connected(creds);
+    // A connection made before the profile was stored: nothing to publish, no status check due.
+    const forget = { pinName: null, pinLegalName: null, pinCompanyName: null, pinProfileSyncedAt: null };
+    await t.prisma.connection.update({ where: { id }, data: forget });
+    const connections = t.app.get(ConnectionsService);
+
+    expect(await connections.refreshStaleProfiles(1000)).toBeGreaterThanOrEqual(1);
+    const row = await t.prisma.connection.findUniqueOrThrow({ where: { id } });
+    expect(row).toMatchObject({
+      pinName: 'Illia',
+      pinLegalName: 'Darcell Taylor',
+      pinCompanyName: 'Pin.tt',
+    });
+    expect(row.pinProfileSyncedAt).not.toBeNull();
+
+    // A fresh profile is left alone.
+    await connections.refreshStaleProfiles(1000);
+    const again = await t.prisma.connection.findUniqueOrThrow({ where: { id } });
+    expect(again.pinProfileSyncedAt).toEqual(row.pinProfileSyncedAt);
+
+    // Stale again, but it was tried a moment ago: not tried again until the pause is over.
+    await t.prisma.connection.update({ where: { id }, data: forget });
+    await connections.refreshStaleProfiles(1000);
+    const paused = await t.prisma.connection.findUniqueOrThrow({ where: { id } });
+    expect(paused.pinProfileSyncedAt).toBeNull();
+  });
+
   it('is idempotent for an active number: no second SMS', async () => {
     const { creds } = await t.newAgency();
     const { id, phone } = await connected(creds);
