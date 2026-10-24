@@ -298,32 +298,41 @@ export class ConnectionsService {
   /**
    * Reads the profile of active connections whose stored profile is missing or older than a day,
    * a few per call. Connections with nothing to publish or check are otherwise never visited, so
-   * their `pin_account` would stay empty. A failed read is not tried again for a while.
+   * their `pin_account` would stay empty. A failed read is not tried again for a while, and the
+   * least recently tried go first, so connections that keep failing never hold up the others.
    */
   async refreshStaleProfiles(limit: number): Promise<number> {
+    const now = Date.now();
+    const notTriedLately = [
+      { pinProfileAttemptedAt: null },
+      { pinProfileAttemptedAt: { lt: new Date(now - PROFILE_RETRY_MS) } },
+    ];
     const stale = await this.prisma.connection.findMany({
       where: {
         status: 'active',
         pinTokenEnc: { not: null },
-        OR: [
-          { pinProfileSyncedAt: null },
-          { pinProfileSyncedAt: { lt: new Date(Date.now() - PROFILE_MAX_AGE_MS) } },
+        AND: [
+          {
+            OR: [
+              { pinProfileSyncedAt: null },
+              { pinProfileSyncedAt: { lt: new Date(now - PROFILE_MAX_AGE_MS) } },
+            ],
+          },
+          { OR: notTriedLately },
         ],
       },
-      orderBy: { pinProfileSyncedAt: { sort: 'asc', nulls: 'first' } },
+      orderBy: { pinProfileAttemptedAt: { sort: 'asc', nulls: 'first' } },
       select: { id: true },
       take: limit,
     });
     let attempted = 0;
     for (const { id } of stale) {
-      const first = await this.redis.set(
-        `pin-bridge:profile-retry:${id}`,
-        '1',
-        'PX',
-        PROFILE_RETRY_MS,
-        'NX',
-      );
-      if (first !== 'OK') {
+      // Claims the attempt, so two workers never read the same profile at once.
+      const claimed = await this.prisma.connection.updateMany({
+        where: { id, OR: notTriedLately },
+        data: { pinProfileAttemptedAt: new Date() },
+      });
+      if (claimed.count === 0) {
         continue;
       }
       attempted += 1;

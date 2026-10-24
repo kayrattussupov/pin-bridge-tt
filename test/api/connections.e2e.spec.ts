@@ -195,7 +195,12 @@ describe('POST /v1/connections (SMS flow)', () => {
     };
     const { id } = await connected(creds);
     // A connection made before the profile was stored: nothing to publish, no status check due.
-    const forget = { pinName: null, pinLegalName: null, pinCompanyName: null, pinProfileSyncedAt: null };
+    const forget = {
+      pinName: null,
+      pinLegalName: null,
+      pinCompanyName: null,
+      pinProfileSyncedAt: null,
+    };
     await t.prisma.connection.update({ where: { id }, data: forget });
     const connections = t.app.get(ConnectionsService);
 
@@ -218,6 +223,43 @@ describe('POST /v1/connections (SMS flow)', () => {
     await connections.refreshStaleProfiles(1000);
     const paused = await t.prisma.connection.findUniqueOrThrow({ where: { id } });
     expect(paused.pinProfileSyncedAt).toBeNull();
+  });
+
+  it('does not let connections whose profile keeps failing hold up the others', async () => {
+    const { creds } = await t.newAgency();
+    const broken = [(await connected(creds)).id, (await connected(creds)).id];
+    const { id: healthy } = await connected(creds);
+    const connections = t.app.get(ConnectionsService);
+    // Everything already waiting from other tests is tried now and paused.
+    await connections.refreshStaleProfiles(1000);
+
+    const forget = {
+      pinName: null,
+      pinLegalName: null,
+      pinCompanyName: null,
+      pinProfileSyncedAt: null,
+    };
+    // Tokens that cannot be decrypted: every profile read of these fails.
+    await t.prisma.connection.updateMany({
+      where: { id: { in: broken } },
+      data: { ...forget, pinTokenEnc: Buffer.from('broken'), pinProfileAttemptedAt: null },
+    });
+    // Tried an hour ago, so it comes after the never-tried broken ones.
+    await t.prisma.connection.update({
+      where: { id: healthy },
+      data: { ...forget, pinProfileAttemptedAt: new Date(Date.now() - 3600_000) },
+    });
+
+    expect(await connections.refreshStaleProfiles(2)).toBe(2);
+    expect(
+      (await t.prisma.connection.findUniqueOrThrow({ where: { id: healthy } })).pinProfileSyncedAt,
+    ).toBeNull();
+
+    // The broken ones are paused, so the next tick reaches the healthy connection.
+    expect(await connections.refreshStaleProfiles(2)).toBe(1);
+    expect(
+      (await t.prisma.connection.findUniqueOrThrow({ where: { id: healthy } })).pinProfileSyncedAt,
+    ).not.toBeNull();
   });
 
   it('is idempotent for an active number: no second SMS', async () => {
