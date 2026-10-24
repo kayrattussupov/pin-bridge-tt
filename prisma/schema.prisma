@@ -90,24 +90,26 @@ enum ConnectionStatus {
 }
 
 model Connection {
-  id                 String           @id @default(uuid()) @db.Uuid
-  agencyId           String           @map("agency_id") @db.Uuid
-  phoneE164          String           @map("phone_e164")
-  displayName        String           @map("display_name")
-  pinDeviceKeyEnc    Bytes?           @map("pin_device_key_enc")
-  pinTokenEnc        Bytes?           @map("pin_token_enc")
-  pinUserId          String?          @map("pin_user_id")
+  id                    String           @id @default(uuid()) @db.Uuid
+  agencyId              String           @map("agency_id") @db.Uuid
+  phoneE164             String           @map("phone_e164")
+  displayName           String           @map("display_name")
+  pinDeviceKeyEnc       Bytes?           @map("pin_device_key_enc")
+  pinTokenEnc           Bytes?           @map("pin_token_enc")
+  pinUserId             String?          @map("pin_user_id")
   /// Name fields of the Pin account profile (GET /users/profile/); nothing else is kept.
-  pinName            String?          @map("pin_name")
-  pinLegalName       String?          @map("pin_legal_name")
-  pinCompanyName     String?          @map("pin_company_name")
-  pinProfileSyncedAt DateTime?        @map("pin_profile_synced_at")
-  status             ConnectionStatus @default(pending_code)
-  smsCooldownUntil   DateTime?        @map("sms_cooldown_until")
-  smsRequestsWindow  DateTime[]       @default([]) @map("sms_requests_window")
-  confirmAttempts    Int              @default(0) @map("confirm_attempts")
-  createdAt          DateTime         @default(now()) @map("created_at")
-  updatedAt          DateTime         @updatedAt @map("updated_at")
+  pinName               String?          @map("pin_name")
+  pinLegalName          String?          @map("pin_legal_name")
+  pinCompanyName        String?          @map("pin_company_name")
+  pinProfileSyncedAt    DateTime?        @map("pin_profile_synced_at")
+  /// Last time the background job tried to read the profile, successful or not.
+  pinProfileAttemptedAt DateTime?        @map("pin_profile_attempted_at")
+  status                ConnectionStatus @default(pending_code)
+  smsCooldownUntil      DateTime?        @map("sms_cooldown_until")
+  smsRequestsWindow     DateTime[]       @default([]) @map("sms_requests_window")
+  confirmAttempts       Int              @default(0) @map("confirm_attempts")
+  createdAt             DateTime         @default(now()) @map("created_at")
+  updatedAt             DateTime         @updatedAt @map("updated_at")
 
   agency   Agency    @relation(fields: [agencyId], references: [id], onDelete: Cascade)
   listings Listing[]
