@@ -1,6 +1,12 @@
 import type { Redis } from 'ioredis';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { PinClient, PinClientOptions, PinLogger } from '../../src/pin/pin.client';
+import {
+  PinClient,
+  PinClientOptions,
+  PinLogger,
+  PinResponseRecord,
+  PinResponseRecorder,
+} from '../../src/pin/pin.client';
 import { PinError } from '../../src/pin/pin.errors';
 import type { CreateItemPayload, PinAuth } from '../../src/pin/pin.types';
 import { FakePin, startFakePin } from '../fake-pin/fake-pin';
@@ -28,7 +34,12 @@ afterAll(async () => {
 beforeEach(() => fake.control.reset());
 
 function makeClient(
-  overrides: { baseUrl?: string; requestTimeoutMs?: number; minRequests?: number } = {},
+  overrides: {
+    baseUrl?: string;
+    requestTimeoutMs?: number;
+    minRequests?: number;
+    recorder?: PinResponseRecorder;
+  } = {},
 ): PinClient {
   const options: PinClientOptions = {
     transport: {
@@ -56,7 +67,7 @@ function makeClient(
     },
     backoff: { baseMs: 5, maxMs: 20, maxAttempts: 3 },
   };
-  const client = new PinClient(options, redis, silent);
+  const client = new PinClient(options, redis, silent, overrides.recorder);
   clients.push(client);
   return client;
 }
@@ -388,5 +399,103 @@ describe('PinClient against fake-pin', () => {
       });
       expect(await client.createDeviceKey()).toBe('d2c8ccce-59df-4e5f-a968-46cdde86f948');
     });
+  });
+});
+
+describe('PinClient recording of Pin answers', () => {
+  function recording(): { recorder: PinResponseRecorder; entries: PinResponseRecord[] } {
+    const entries: PinResponseRecord[] = [];
+    return {
+      entries,
+      recorder: {
+        record: async (entry) => {
+          entries.push(entry);
+        },
+      },
+    };
+  }
+
+  it('keeps the answers to item writes and front_my, tagged with connection and item', async () => {
+    const { recorder, entries } = recording();
+    const client = makeClient({ recorder });
+    const auth = { ...(await connect(client)), connectionId: 'conn-1' };
+
+    const created = await client.createItem(auth, rentItem());
+    fake.control.setModeration(Number(created.id), 1);
+    await client.listMyItems(auth);
+    await client.updateItem(auth, created.id, rentItem({ title: 'New title' }));
+    await client.partialUpdateItem(auth, created.id, { price: 3200 });
+    await client.toggleActive(auth, created.id);
+    await client.removeItem(auth, created.id);
+
+    expect(entries.map((e) => [e.endpoint, e.method, e.path, e.itemId])).toEqual([
+      ['items.create', 'POST', '/items/', created.id],
+      ['items.front_my', 'GET', '/items/front_my/', undefined],
+      ['items.update', 'PATCH', `/items/${created.id}/`, created.id],
+      ['items.partial_update', 'PATCH', `/items/${created.id}/partial_update/`, created.id],
+      ['items.toggle_active', 'POST', `/items/toggle_active/${created.id}/`, created.id],
+      ['items.to_remove', 'POST', `/items/to_remove/${created.id}/`, created.id],
+    ]);
+    expect(entries.every((e) => e.connectionId === 'conn-1' && e.outcome === 'ok')).toBe(true);
+    // As Pin sent it, before the bridge reads it: the raw moderator_comment, not a mapped one.
+    expect(entries[0]!).toMatchObject({
+      httpStatus: 201,
+      attempt: 1,
+      body: { id: Number(created.id), external_id: 'duck-8842' },
+    });
+    expect(entries[1]!.body).toMatchObject({ results: [{ id: Number(created.id) }] });
+  });
+
+  it('leaves out connection, dictionary, upload and dry-run calls', async () => {
+    const { recorder, entries } = recording();
+    const client = makeClient({ recorder });
+    const auth = await connect(client);
+    await client.validateAd(auth, rentItem());
+    await client.getAllCities(auth.deviceKey);
+    await client.uploadPicture(auth, { data: JPEG, filename: 'a.jpg', contentType: 'image/jpeg' });
+    expect(entries).toEqual([]);
+  });
+
+  it('keeps every attempt of a retried call, failures and non-JSON pages included', async () => {
+    const { recorder, entries } = recording();
+    const client = makeClient({ recorder });
+    const auth = await connect(client);
+    fake.control.failNext({ route: 'GET /items/front_my/', status: 503, body: { detail: 'busy' } });
+    fake.control.failNext({ route: 'GET /items/front_my/', status: 502, body: '<html>Bad</html>' });
+    await client.listMyItems(auth, { page: 2 });
+
+    expect(entries.map((e) => [e.attempt, e.httpStatus, e.outcome, e.path])).toEqual([
+      [1, 503, 'server', '/items/front_my/?page=2'],
+      [2, 502, 'server', '/items/front_my/?page=2'],
+      [3, 200, 'ok', '/items/front_my/?page=2'],
+    ]);
+    expect(entries[0]!.body).toEqual({ detail: 'busy' });
+    expect(entries[1]!.body).toBe('<html>Bad</html>');
+  });
+
+  it('records a timeout without a body and redacts credential fields', async () => {
+    const { recorder, entries } = recording();
+    const client = makeClient({ recorder, requestTimeoutMs: 100 });
+    const auth = await connect(client);
+    fake.control.failNext({ route: 'POST /items/', delayMs: 300 });
+    await failure(client.createItem(auth, rentItem()));
+    fake.control.failNext({
+      route: 'POST /items/toggle_active/:id/',
+      status: 200,
+      body: { status: 2, token: 'leaked' },
+    });
+    await client.toggleActive(auth, '1');
+
+    expect(entries[0]!).toMatchObject({ outcome: 'timeout', body: null });
+    expect(entries[0]!.httpStatus).toBeUndefined();
+    expect(entries[1]!.body).toEqual({ status: 2, token: '[REDACTED]' });
+  });
+
+  it('never fails a Pin call because recording failed', async () => {
+    const client = makeClient({
+      recorder: { record: () => Promise.reject(new Error('database down')) },
+    });
+    const auth = await connect(client);
+    await expect(client.createItem(auth, rentItem())).resolves.toMatchObject({ status: 0 });
   });
 });

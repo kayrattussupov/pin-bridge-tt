@@ -136,6 +136,8 @@ export type PinItemList = z.infer<typeof pinItemListSchema>;
 export interface PinAuth {
   deviceKey: string;
   token: string;
+  /** The Pin Bridge connection these credentials belong to; tags recorded Pin answers. */
+  connectionId?: string;
 }
 
 export interface PinCoordinates {

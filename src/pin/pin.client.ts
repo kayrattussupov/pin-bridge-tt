@@ -3,7 +3,7 @@ import type { Redis } from 'ioredis';
 import { FormData } from 'undici';
 import { z, type ZodType } from 'zod';
 import { CircuitBreaker, CircuitBreakerOptions } from './circuit-breaker';
-import { classifyResponse, classifyTransportError } from './classify';
+import { type PinRawResponse, classifyResponse, classifyTransportError } from './classify';
 import { PinError, isPinError } from './pin.errors';
 import { PinTransport, TransportOptions, TransportRequest } from './pin-transport';
 import {
@@ -23,6 +23,7 @@ import {
 } from './pin.types';
 import { metrics } from '../observability/metrics';
 import { RateLimiter, RateLimiterOptions } from './rate-limiter';
+import { redactSecrets } from './redact';
 import { BackoffOptions, RetryPolicy, retryDelayMs, shouldRetry, sleep } from './retry';
 
 export interface PinClientOptions {
@@ -39,6 +40,28 @@ export interface PinLogger {
   warn(obj: object, msg: string): void;
 }
 
+/** One answer from Pin as received; `body` has its credential fields redacted already. */
+export interface PinResponseRecord {
+  endpoint: string;
+  method: string;
+  path: string;
+  connectionId?: string;
+  itemId?: string;
+  attempt: number;
+  httpStatus?: number;
+  outcome: string;
+  durationMs: number;
+  body: unknown;
+}
+
+/** Where the answers of calls marked `record` are kept (see PinResponseStore). */
+export interface PinResponseRecorder {
+  record(entry: PinResponseRecord): Promise<void>;
+}
+
+/** Non-JSON answers (HTML error pages) are kept only up to this many characters. */
+const MAX_RECORDED_TEXT = 10_000;
+
 interface CallSpec<T> {
   /** Stable name for logs and metrics, e.g. `items.create`. */
   endpoint: string;
@@ -49,6 +72,10 @@ interface CallSpec<T> {
   form?: () => FormData;
   deviceKey?: string;
   token?: string;
+  connectionId?: string;
+  /** Keep Pin's answer (every attempt, failures included) through the recorder. */
+  record?: boolean;
+  itemId?: string;
   timeoutMs?: number;
   retry: RetryPolicy;
   /** False when resending could apply the call twice (create, toggle, SMS). */
@@ -96,6 +123,7 @@ const shapeOf = (body: unknown): unknown => {
  * The only component allowed to talk to pin.tt. Every call goes:
  * circuit breaker → global rate limit → HTTP → classification → (safe) retry.
  * Credentials never reach the logs; phone numbers are not logged by this class at all.
+ * Answers to item writes and front_my also go to the recorder, when one is given.
  */
 export class PinClient {
   private readonly transport: PinTransport;
@@ -106,6 +134,7 @@ export class PinClient {
     private readonly options: PinClientOptions,
     redis: Redis,
     private readonly logger: PinLogger = new Logger('PinClient') as unknown as PinLogger,
+    private readonly recorder?: PinResponseRecorder,
   ) {
     this.transport = new PinTransport(options.transport);
     this.breaker = new CircuitBreaker(redis, options.breaker);
@@ -240,6 +269,7 @@ export class PinClient {
       path: '/items/',
       json: payload,
       ...this.authOf(auth),
+      record: true,
       retry: 'none',
       idempotent: false,
       schema: pinItemSchema,
@@ -254,6 +284,8 @@ export class PinClient {
       path: `/items/${encodeURIComponent(itemId)}/`,
       json: payload,
       ...this.authOf(auth),
+      record: true,
+      itemId,
       retry: 'safe',
       idempotent: true,
       schema: pinItemSchema,
@@ -271,6 +303,8 @@ export class PinClient {
       path: `/items/${encodeURIComponent(itemId)}/partial_update/`,
       json: patch,
       ...this.authOf(auth),
+      record: true,
+      itemId,
       retry: 'safe',
       idempotent: true,
       schema: pinItemSchema,
@@ -284,6 +318,8 @@ export class PinClient {
       method: 'POST',
       path: `/items/toggle_active/${encodeURIComponent(itemId)}/`,
       ...this.authOf(auth),
+      record: true,
+      itemId,
       retry: 'none',
       idempotent: false,
       schema: anyJson,
@@ -296,6 +332,8 @@ export class PinClient {
       method: 'POST',
       path: `/items/to_remove/${encodeURIComponent(itemId)}/`,
       ...this.authOf(auth),
+      record: true,
+      itemId,
       retry: 'none',
       idempotent: false,
       schema: anyJson,
@@ -310,6 +348,7 @@ export class PinClient {
       path: '/items/front_my/',
       query: { page: options.page },
       ...this.authOf(auth),
+      record: true,
       retry: 'safe',
       idempotent: true,
       schema: pinItemListSchema,
@@ -348,8 +387,8 @@ export class PinClient {
     });
   }
 
-  private authOf(auth: PinAuth): { deviceKey: string; token: string } {
-    return { deviceKey: auth.deviceKey, token: auth.token };
+  private authOf(auth: PinAuth): { deviceKey: string; token: string; connectionId?: string } {
+    return { deviceKey: auth.deviceKey, token: auth.token, connectionId: auth.connectionId };
   }
 
   // ---------------------------------------------------------------------------
@@ -424,6 +463,11 @@ export class PinClient {
     }
 
     metrics.pinRequests.inc({ endpoint: spec.endpoint, outcome: error?.kind ?? 'ok' });
+    const parsed = error ? undefined : spec.schema.safeParse(result.response!.body);
+    await this.recordAnswer(spec, attempt, durationMs, result.response, {
+      outcome: error?.kind ?? (parsed?.success ? 'ok' : 'unexpected_response'),
+      itemId: parsed?.success ? idOf(parsed.data) : undefined,
+    });
     if (error) {
       const countsAsOutage = error.isUpstreamFailure && !(spec.optional && error.kind === 'server');
       await (countsAsOutage
@@ -445,12 +489,12 @@ export class PinClient {
     }
 
     await this.breaker.recordSuccess(ticket);
-    const parsed = spec.schema.safeParse(result.response!.body);
-    if (!parsed.success) {
+    const checked = parsed!;
+    if (!checked.success) {
       this.logger.warn(
         {
           endpoint: spec.endpoint,
-          issues: parsed.error.issues.slice(0, 5),
+          issues: checked.error.issues.slice(0, 5),
           // Field names and value types only: values may hold credentials.
           shape: shapeOf(result.response!.body),
         },
@@ -460,13 +504,65 @@ export class PinClient {
         kind: 'unexpected_response',
         endpoint: spec.endpoint,
         httpStatus: result.response!.status,
-        cause: parsed.error,
+        cause: checked.error,
       });
     }
     this.logger.debug(
       { endpoint: spec.endpoint, attempt, durationMs, httpStatus: result.response!.status },
       'pin call ok',
     );
-    return parsed.data;
+    return checked.data;
   }
+
+  /** Best effort: a failure to record never changes the outcome of the Pin call. */
+  private async recordAnswer(
+    spec: CallSpec<unknown>,
+    attempt: number,
+    durationMs: number,
+    response: PinRawResponse | undefined,
+    extra: { outcome: string; itemId?: string },
+  ): Promise<void> {
+    if (!spec.record || !this.recorder) {
+      return;
+    }
+    try {
+      await this.recorder.record({
+        endpoint: spec.endpoint,
+        method: spec.method,
+        path: this.transport.url(spec.path, spec.query).replace(/^.*\/api\/v1\.6/, ''),
+        connectionId: spec.connectionId,
+        itemId: spec.itemId ?? extra.itemId,
+        attempt,
+        httpStatus: response?.status,
+        outcome: extra.outcome,
+        durationMs,
+        body: recordedBody(response),
+      });
+    } catch (error) {
+      this.logger.warn(
+        { endpoint: spec.endpoint, err: error instanceof Error ? error.message : String(error) },
+        'could not record the pin response',
+      );
+    }
+  }
+}
+
+function recordedBody(response: PinRawResponse | undefined): unknown {
+  if (!response) {
+    return null;
+  }
+  if (response.isJson) {
+    return redactSecrets(response.body);
+  }
+  const text = String(response.body ?? '');
+  return text.length > MAX_RECORDED_TEXT ? `${text.slice(0, MAX_RECORDED_TEXT)}…` : text;
+}
+
+/** The item id of a create/update answer; undefined for lists and other shapes. */
+function idOf(data: unknown): string | undefined {
+  if (data && typeof data === 'object' && !Array.isArray(data) && 'id' in data) {
+    const id = (data as { id: unknown }).id;
+    return typeof id === 'string' || typeof id === 'number' ? String(id) : undefined;
+  }
+  return undefined;
 }

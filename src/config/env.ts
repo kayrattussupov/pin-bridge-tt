@@ -147,6 +147,9 @@ export const envSchema = z.object({
   STATUS_SYNC_INTERVAL_MS: z.coerce.number().int().positive().default(60_000),
   STATUS_SYNC_CONNECTIONS_PER_TICK: z.coerce.number().int().positive().default(20),
 
+  /** Days to keep Pin's raw answers to item writes and front_my (`pin_responses`); 0 keeps none. */
+  PIN_RESPONSE_RETENTION_DAYS: z.coerce.number().int().min(0).default(30),
+
   // Optional bearer token for /metrics (also blocked publicly by Caddy).
   METRICS_TOKEN: z.string().min(16).optional(),
 

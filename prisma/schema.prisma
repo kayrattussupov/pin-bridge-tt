@@ -287,6 +287,33 @@ model AuditLog {
   @@map("audit_log")
 }
 
+/// Pin's own answers to item writes and front_my, as received (credential fields redacted), for
+/// investigations. Kept PIN_RESPONSE_RETENTION_DAYS days.
+model PinResponse {
+  id           BigInt   @id @default(autoincrement())
+  /// Stable call name, e.g. `items.create`, `items.front_my`.
+  endpoint     String
+  method       String
+  /// Path with query, without the /api/v1.6 prefix.
+  path         String
+  connectionId String?  @map("connection_id") @db.Uuid
+  itemId       String?  @map("item_id")
+  attempt      Int
+  /// Null when no HTTP answer came back (timeout, network error).
+  httpStatus   Int?     @map("http_status")
+  /// `ok`, or the error kind the call failed with.
+  outcome      String
+  durationMs   Int      @map("duration_ms")
+  /// The body as Pin sent it: JSON as is, anything else as a (truncated) string.
+  body         Json?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@index([connectionId, createdAt])
+  @@index([itemId])
+  @@map("pin_responses")
+}
+
 /// Secrets of Pin Bridge itself (e.g. the device key used for dictionary calls), encrypted.
 model SystemSecret {
   name      String   @id
