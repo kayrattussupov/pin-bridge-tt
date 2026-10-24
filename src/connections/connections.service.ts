@@ -29,6 +29,8 @@ const DEFAULT_SMS_COOLDOWN_SECONDS = 60;
 const LOCK_TTL_MS = 90_000;
 /** The Pin profile is read again when it is older than this (names can change on Pin). */
 const PROFILE_MAX_AGE_MS = 24 * 3600 * 1000;
+/** After an attempt to read a stale profile, the background job leaves that connection alone this long. */
+const PROFILE_RETRY_MS = 15 * 60 * 1000;
 
 import { deviceKeyContext, tokenContext } from './secret-contexts';
 
@@ -290,6 +292,43 @@ export class ConnectionsService {
       ),
       token: this.encryption.decryptString(connection.pinTokenEnc, tokenContext(connectionId)),
     };
+  }
+
+  /**
+   * Reads the profile of active connections whose stored profile is missing or older than a day,
+   * a few per call. Connections with nothing to publish or check are otherwise never visited, so
+   * their `pin_account` would stay empty. A failed read is not tried again for a while.
+   */
+  async refreshStaleProfiles(limit: number): Promise<number> {
+    const stale = await this.prisma.connection.findMany({
+      where: {
+        status: 'active',
+        pinTokenEnc: { not: null },
+        OR: [
+          { pinProfileSyncedAt: null },
+          { pinProfileSyncedAt: { lt: new Date(Date.now() - PROFILE_MAX_AGE_MS) } },
+        ],
+      },
+      orderBy: { pinProfileSyncedAt: { sort: 'asc', nulls: 'first' } },
+      select: { id: true },
+      take: limit,
+    });
+    let attempted = 0;
+    for (const { id } of stale) {
+      const first = await this.redis.set(
+        `pin-bridge:profile-retry:${id}`,
+        '1',
+        'PX',
+        PROFILE_RETRY_MS,
+        'NX',
+      );
+      if (first !== 'OK') {
+        continue;
+      }
+      attempted += 1;
+      await this.syncPinProfile(id);
+    }
+    return attempted;
   }
 
   /**
