@@ -151,7 +151,7 @@ for line in sys.stdin:
     if "/listings/" + urllib.parse.quote(ext) not in uri and "/listings/" + ext not in uri and not uri.startswith("/v1/listings/validate"):
         continue
     h = r.get("headers") or {}
-    t = datetime.datetime.utcfromtimestamp(e.get("ts", 0)).strftime("%m-%d %H:%M:%S")
+    t = datetime.datetime.fromtimestamp(e.get("ts", 0), datetime.timezone.utc).strftime("%m-%d %H:%M:%S")
     idem = (h.get("Idempotency-Key") or [""])[0]
     ua = (h.get("User-Agent") or [""])[0]
     print(t, r.get("method"), uri, e.get("status"), r.get("remote_ip") or "", idem, ua)
@@ -171,7 +171,7 @@ for line in sys.stdin:
     except ValueError:
         print(line.rstrip())
         continue
-    t = datetime.datetime.utcfromtimestamp(e.get("time", 0) / 1000).strftime("%m-%d %H:%M:%S")
+    t = datetime.datetime.fromtimestamp(e.get("time", 0) / 1000, datetime.timezone.utc).strftime("%m-%d %H:%M:%S")
     rest = {k: v for k, v in e.items() if k not in ("level", "time", "pid", "hostname", "msg", "context")}
     print(t, e.get("msg"), json.dumps(rest, ensure_ascii=False))
 ' || true
