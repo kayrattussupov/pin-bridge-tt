@@ -1,16 +1,19 @@
-// GET a pin.tt path with the stored Pin credentials of one connection (by phone), on the bridge
+// Calls a pin.tt path with the stored Pin credentials of one connection (by phone), on the bridge
 // server. The device key and token are decrypted inside the worker container and never printed.
 //
 //   docker compose run --rm -T worker node - +18686813498 /items/rubric_form/21/ \
 //     < pin-as-connection.js > /root/rubric21.json
+//   docker compose run --rm -T worker node - +18686813498 /items/to_remove/658435/ POST \
+//     < pin-as-connection.js
 //
-// Prints the response body to stdout, "HTTP <status>" to stderr. GET only: it changes nothing.
+// Prints the response body to stdout, "HTTP <status>" to stderr. GET by default (changes nothing);
+// POST only when given explicitly, without a body (to_remove, toggle_active).
 const { createDecipheriv } = require('node:crypto');
 const { Client } = require('pg');
 
-const [phone, path] = process.argv.slice(2);
-if (!phone || !path || !path.startsWith('/')) {
-  console.error('usage: node - <phone_e164> </pin/path/> < pin-as-connection.js');
+const [phone, path, method = 'GET'] = process.argv.slice(2);
+if (!phone || !path || !path.startsWith('/') || !['GET', 'POST'].includes(method)) {
+  console.error('usage: node - <phone_e164> </pin/path/> [GET|POST] < pin-as-connection.js');
   process.exit(2);
 }
 
@@ -52,6 +55,7 @@ function decrypt(payload, context) {
   const { id } = rows[0];
   const base = (process.env.PIN_BASE_URL || 'https://pin.tt').replace(/\/$/, '');
   const res = await fetch(`${base}/api/v1.6${path}`, {
+    method,
     headers: {
       'device-api-key': decrypt(rows[0].pin_device_key_enc, `connection:${id}:device_key`),
       authorization: `Token ${decrypt(rows[0].pin_token_enc, `connection:${id}:token`)}`,
