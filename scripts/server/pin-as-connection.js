@@ -8,9 +8,9 @@
 const { createDecipheriv } = require('node:crypto');
 const { Client } = require('pg');
 
-const [phone, path] = process.argv.slice(2);
-if (!phone || !path || !path.startsWith('/')) {
-  console.error('usage: node - <phone_e164> </pin/path/> < pin-as-connection.js');
+const [phone, path, method = 'GET'] = process.argv.slice(2);
+if (!phone || !path || !path.startsWith('/') || !['GET', 'POST'].includes(method)) {
+  console.error('usage: node - <phone_e164> </pin/path/> [GET|POST] < pin-as-connection.js');
   process.exit(2);
 }
 
@@ -52,6 +52,7 @@ function decrypt(payload, context) {
   const { id } = rows[0];
   const base = (process.env.PIN_BASE_URL || 'https://pin.tt').replace(/\/$/, '');
   const res = await fetch(`${base}/api/v1.6${path}`, {
+    method,
     headers: {
       'device-api-key': decrypt(rows[0].pin_device_key_enc, `connection:${id}:device_key`),
       authorization: `Token ${decrypt(rows[0].pin_token_enc, `connection:${id}:token`)}`,
