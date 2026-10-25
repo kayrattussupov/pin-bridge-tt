@@ -1,10 +1,13 @@
-// GET a pin.tt path with the stored Pin credentials of one connection (by phone), on the bridge
+// Calls a pin.tt path with the stored Pin credentials of one connection (by phone), on the bridge
 // server. The device key and token are decrypted inside the worker container and never printed.
 //
 //   docker compose run --rm -T worker node - +18686813498 /items/rubric_form/21/ \
 //     < pin-as-connection.js > /root/rubric21.json
+//   docker compose run --rm -T worker node - +18686813498 /items/to_remove/658435/ POST \
+//     < pin-as-connection.js
 //
-// Prints the response body to stdout, "HTTP <status>" to stderr. GET only: it changes nothing.
+// Prints the response body to stdout, "HTTP <status>" to stderr. GET by default (changes nothing);
+// POST only when given explicitly, without a body (to_remove, toggle_active).
 const { createDecipheriv } = require('node:crypto');
 const { Client } = require('pg');
 
