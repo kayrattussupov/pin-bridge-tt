@@ -445,19 +445,70 @@ describe('publishing failures', () => {
     );
   });
 
-  it('publishes without a photo that is gone, with a warning', async () => {
+  it('fails with the reason per photo instead of publishing without it', async () => {
     const { creds, connectionId } = await setup();
     await api(creds, connectionId).put(
       'L1',
-      listing({ images: [photo('a'), `${images.url}/missing.jpg`, `${images.url}/small.jpg`] }),
+      listing({
+        images: [
+          photo('a'),
+          `${images.url}/missing.jpg`,
+          `${images.url}/photo.webp`,
+          `${images.url}/small.jpg`,
+        ],
+      }),
     );
-    const done = await settled(creds, connectionId, 'L1');
-    expect(done.sync_state).toBe('synced');
-    expect(done.images.map((i: Json) => i.status)).toEqual(['uploaded', 'failed', 'uploaded']);
-    expect(pinItemOf(done)?.images).toHaveLength(2);
-    expect(done.warnings.map((w: Json) => w.code)).toEqual(
-      expect.arrayContaining(['image_http_error', 'image_low_resolution']),
+    const done = await settled(creds, connectionId, 'L1', (l) => l.sync_state === 'failed');
+    expect(done.last_error).toMatchObject({ code: 'image_failed' });
+    expect(done.last_error.errors.map((e: Json) => [e.field, e.code])).toEqual([
+      ['images.1', 'image_http_error'],
+      ['images.2', 'image_unsupported_format'],
+    ]);
+    expect(done.last_error.message).toContain('2 of 4 photos');
+    expect(done.images.map((i: Json) => i.status)).toEqual([
+      'uploaded',
+      'failed',
+      'failed',
+      'uploaded',
+    ]);
+  });
+
+  it('does not re-upload photos when one is added, removed or the order changes', async () => {
+    const { creds, connectionId } = await setup();
+    const uploads = () => fake.control.callCount('POST /items/pics/');
+    await api(creds, connectionId).put(
+      'L1',
+      listing({ images: [photo('a'), photo('b'), photo('c')] }),
     );
+    const first = await settled(creds, connectionId, 'L1');
+    expect(pinItemOf(first)?.images).toHaveLength(3);
+    expect(uploads()).toBe(3);
+
+    await api(creds, connectionId).put(
+      'L1',
+      listing({ images: [photo('a'), photo('b'), photo('c'), photo('d')] }),
+    );
+    await settled(
+      creds,
+      connectionId,
+      'L1',
+      (l) => l.version === first.version + 1 && l.sync_state === 'synced',
+    );
+    expect(uploads()).toBe(4);
+
+    // New cover and one photo removed.
+    await api(creds, connectionId).put(
+      'L1',
+      listing({ images: [photo('c'), photo('a'), photo('d')] }),
+    );
+    const last = await settled(
+      creds,
+      connectionId,
+      'L1',
+      (l) => l.version === first.version + 2 && l.sync_state === 'synced',
+    );
+    expect(uploads()).toBe(4);
+    expect(pinItemOf(last)?.images).toHaveLength(3);
   });
 
   it('retries a temporarily unreachable photo, then fails clearly', async () => {

@@ -310,8 +310,9 @@ export class ListingSyncService {
 
   /**
    * Uploads photos one by one, in order. Unchanged URLs reuse their Pin picture id; a photo
-   * that is gone or not an image is skipped with a warning; a temporarily unreachable photo
-   * makes the whole sync retry later (so a CDN hiccup does not publish without photos).
+   * that is gone, too big or not JPEG/PNG fails the sync with the reason per photo; a temporarily
+   * unreachable photo makes the whole sync retry later (so a CDN hiccup does not publish without
+   * photos).
    */
   private async syncImages(
     listing: FullListing,
@@ -319,6 +320,7 @@ export class ListingSyncService {
   ): Promise<{ picIds: string[]; warnings: ListingIssue[] }> {
     const picIds: string[] = [];
     const warnings: ListingIssue[] = [];
+    const broken: ListingIssue[] = [];
     const rows = listing.images.slice().sort((a, b) => a.position - b.position);
     for (const row of rows) {
       if (row.status === 'uploaded' && row.pinPicId) {
@@ -334,7 +336,7 @@ export class ListingSyncService {
             where: { id: row.id },
             data: { status: 'failed', error: error.message },
           });
-          warnings.push({
+          broken.push({
             field: `images.${row.position}`,
             code: `image_${error.code}`,
             message: error.message,
@@ -379,13 +381,24 @@ export class ListingSyncService {
       picIds.push(pinPicId);
     }
     for (const row of rows.filter((r) => r.status === 'failed')) {
-      if (!warnings.some((w) => w.field === `images.${row.position}`)) {
-        warnings.push({
+      if (!broken.some((w) => w.field === `images.${row.position}`)) {
+        broken.push({
           field: `images.${row.position}`,
           code: 'image_failed',
-          message: row.error ?? 'Photo skipped.',
+          message: row.error ?? 'Photo could not be used.',
         });
       }
+    }
+    if (broken.length) {
+      // Never publish a listing silently missing photos. The good photos are already uploaded
+      // and remembered, so sending the listing again only redoes the broken ones.
+      throw new PermanentSyncError({
+        code: 'image_failed',
+        message: `${broken.length} of ${rows.length} photos could not be used (${picIds.length} uploaded): ${broken
+          .map((b) => `${b.field}: ${b.message}`)
+          .join('; ')}`,
+        errors: broken,
+      });
     }
     return { picIds, warnings };
   }
