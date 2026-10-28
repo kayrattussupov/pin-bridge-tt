@@ -276,12 +276,15 @@ export class PinClient {
     });
   }
 
-  /** Full edit: PATCH with the whole body; sending the same body twice gives the same result. */
+  /**
+   * Edit with the whole body; sending the same body twice gives the same result. Pin answers 405 to
+   * PATCH/PUT on /items/<id>/ (checked on prod 2026-10-28), so this goes through partial_update/.
+   */
   async updateItem(auth: PinAuth, itemId: string, payload: CreateItemPayload): Promise<PinItem> {
     return this.call({
       endpoint: 'items.update',
       method: 'PATCH',
-      path: `/items/${encodeURIComponent(itemId)}/`,
+      path: `/items/${encodeURIComponent(itemId)}/partial_update/`,
       json: payload,
       ...this.authOf(auth),
       record: true,

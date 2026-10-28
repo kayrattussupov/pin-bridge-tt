@@ -525,21 +525,10 @@ export function buildFakePin(options: FakePinOptions = {}): {
         return reply.code(201).send(serialize(item));
       });
 
-      api.patch('/items/:id/', async (req, reply) => {
-        const item = ownedItem(req, reply);
-        if (!item) {
-          return reply;
-        }
-        const body = req.body as ItemBody;
-        const errors = validate(body, false);
-        if (Object.keys(errors).length) {
-          return reply.code(400).send(errors);
-        }
-        Object.assign(item, body, {
-          images: ((body.images as unknown[]) ?? []).slice(0, MAX_IMAGES).map(Number),
-        });
-        return serialize(item);
-      });
+      // Prod answers 405 here (checked 2026-10-28); edits go through partial_update/.
+      api.patch('/items/:id/', async (_req, reply) =>
+        reply.code(405).send({ detail: 'Method "PATCH" not allowed.' }),
+      );
 
       api.patch('/items/:id/partial_update/', async (req, reply) => {
         const item = ownedItem(req, reply);
