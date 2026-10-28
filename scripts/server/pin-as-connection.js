@@ -6,7 +6,8 @@
 //   docker compose run --rm -T worker node - +18686813498 /items/to_remove/658435/ POST \
 //     < pin-as-connection.js
 //
-//   docker compose run --rm -T worker node - +18686813498 /users/profile/ PATCH '{"name":"Darcell Taylor"}' //     < pin-as-connection.js
+//   docker compose run --rm -T worker node - +18686813498 /users/profile/ PATCH '{"name":"Darcell Taylor"}' \
+//     < pin-as-connection.js
 //
 // Prints the response body to stdout, "HTTP <status>" to stderr. GET by default (changes nothing);
 // POST only when given explicitly, without a body (to_remove, toggle_active). PATCH and PUT take
