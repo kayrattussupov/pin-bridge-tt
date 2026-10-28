@@ -36,6 +36,12 @@ export async function startImageServer(): Promise<ImageServer> {
   });
   app.get('/big.jpg', async (_req, reply) => reply.type('image/jpeg').send(big));
   app.get('/small.jpg', async (_req, reply) => reply.type('image/jpeg').send(small));
+  const webp = await sharp({
+    create: { width: 1000, height: 800, channels: 3, background: '#33aa66' },
+  })
+    .webp()
+    .toBuffer();
+  app.get('/photo.webp', async (_req, reply) => reply.type('image/webp').send(webp));
   app.get('/transparent.png', async (_req, reply) => reply.type('image/png').send(png));
   app.get('/vector.svg', async (_req, reply) =>
     reply

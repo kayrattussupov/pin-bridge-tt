@@ -127,7 +127,7 @@ export const envSchema = z.object({
     .number()
     .int()
     .positive()
-    .default(15 * 1024 * 1024),
+    .default(50 * 1024 * 1024),
   // DANGER: lets photo and webhook URLs point at private networks and plain http. Tests/local dev only.
   UNSAFE_ALLOW_PRIVATE_OUTBOUND_HOSTS: booleanFromString.default(false),
 
