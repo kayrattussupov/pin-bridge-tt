@@ -28,6 +28,8 @@ export interface ListingView {
     moderator_comment: string | null;
     /** The seller name (`user.name`) the item was sent to Pin with; null before the first send. */
     seller_name: string | null;
+    /** Public page of the item on pin.tt; null until Pin lists it. Stays after the item hides. */
+    url: string | null;
   };
   images: { url: string; status: ListingImage['status']; error: string | null }[];
   warnings: unknown[];
@@ -53,6 +55,7 @@ export function listingView(listing: Listing & { images?: ListingImage[] }): Lis
       not_paid: listing.notPaid,
       moderator_comment: listing.moderatorComment,
       seller_name: listing.pinSellerName,
+      url: listing.pinUrl,
     },
     images: (listing.images ?? [])
       .slice()

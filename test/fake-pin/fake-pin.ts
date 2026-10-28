@@ -317,6 +317,7 @@ export function buildFakePin(options: FakePinOptions = {}): {
     const { ownerPhone: _owner, created_at: _created, ...rest } = item;
     return {
       ...rest,
+      url: `/adv/${item.id}_${item.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}/`,
       images: item.images.map((id) => ({
         id,
         url: `https://img.pin.tt/800/${id}.jpg`,

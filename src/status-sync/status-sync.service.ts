@@ -189,6 +189,8 @@ export class StatusSyncService {
           where: { id: listing.id },
           data: {
             ...after,
+            // Kept when Pin stops listing the item (hidden): the link then shows "ad expired".
+            ...(item.pin_url ? { pinUrl: item.pin_url } : {}),
             statusCheckedAt: new Date(now),
             nextStatusCheckAt: new Date(now + nextStatusCheckDelayMs(after, sincePublished)),
             ...(drifted ? { syncState: 'queued', version: { increment: 1 } } : {}),

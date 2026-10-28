@@ -52,7 +52,8 @@ returns `422 idempotency_key_reused`.
     "status": "published",
     "not_paid": false,
     "moderator_comment": null,
-    "seller_name": "Darcell Taylor"
+    "seller_name": "Darcell Taylor",
+    "url": "https://pin.tt/adv/48213_3-bedroom-townhouse-in-westmoorings-for-sale/"
   },
   "images": [
     { "url": "https://cdn.your-agency.tt/8842/1.jpg", "status": "uploaded", "error": null }
@@ -73,6 +74,11 @@ returns `422 idempotency_key_reused`.
   account balance (paid categories).
 - `pin.seller_name`: the seller name (`user.name`) the item was sent to Pin with: the listing's
   `contact.name`, or else the connection's `seller_name`. `null` before the first send.
+- `pin.url`: the public page of the item on pin.tt, for a "view on Pin" button next to the status.
+  `null` until Pin lists the item (the bridge reads it on its next status check, usually within
+  a few minutes after sending). It is kept when the item hides or is deleted, but then Pin shows
+  "The ad expired" there; a republished item gets its new link. It arrives with `GET` and in
+  webhooks, but appearing alone does not trigger `listing.status_changed`.
 - `live`: `true` only when buyers can see the listing (`published` and not waiting for payment).
 
 ## Failures

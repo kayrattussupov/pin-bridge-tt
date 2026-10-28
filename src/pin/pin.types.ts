@@ -26,6 +26,21 @@ export const phoneVerifyConfirmSchema = z.looseObject({
 
 export const picSchema = z.looseObject({ id });
 
+/** Where Pin's relative item links (`/adv/<id>_<slug>/`) point to. */
+const PIN_PUBLIC_ORIGIN = 'https://pin.tt';
+
+/** front_my `url` is relative to pin.tt; an https link is kept, anything else is no link. */
+export function pinPublicUrl(url: string | null | undefined): string | null {
+  const value = url?.trim();
+  if (!value) {
+    return null;
+  }
+  if (value.startsWith('/') && !value.startsWith('//')) {
+    return `${PIN_PUBLIC_ORIGIN}${value}`;
+  }
+  return value.startsWith('https://') ? value : null;
+}
+
 const blankToNull = (value: string | null | undefined): string | null => value?.trim() || null;
 
 /**
@@ -98,6 +113,8 @@ export const pinItemSchema = z
     not_paid: z.boolean().nullable().optional(),
     moderator_comment: z.string().nullable().optional(),
     external_id: z.string().nullable().optional(),
+    /** front_my only (`/adv/658851_<slug>/`, verified on prod 2026-10-28). */
+    url: z.string().nullable().optional(),
   })
   .transform((item) => {
     const detail = statusObjectSchema.safeParse(item.status);
@@ -107,6 +124,7 @@ export const pinItemSchema = z
         ...item,
         status: numericStatus(item.status),
         moderator_comment: item.moderator_comment || null,
+        pin_url: pinPublicUrl(item.url),
       };
     }
     const code = detail.data.code;
@@ -114,6 +132,7 @@ export const pinItemSchema = z
       ...item,
       status: code === undefined ? undefined : FRONT_MY_STATUS_CODES[code.replace(/^status_/, '')],
       moderator_comment: item.moderator_comment || detail.data.comment || null,
+      pin_url: pinPublicUrl(item.url),
       /** Pin's raw status code and labels, kept for logging codes we cannot map yet. */
       status_code: code,
       status_text: detail.data.status,

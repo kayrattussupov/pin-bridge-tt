@@ -186,7 +186,7 @@ export class ListingSyncService {
         itemId = null;
         await this.prisma.listing.update({
           where: { id: listing.id },
-          data: { pinItemId: null, pinStatus: null },
+          data: { pinItemId: null, pinStatus: null, pinUrl: null },
         });
       }
     }
@@ -197,6 +197,7 @@ export class ListingSyncService {
         pinHash,
         createUnknown: false,
         sellerName: payload.user.name,
+        resetPinUrl: true,
       });
     } else if (listing.pinSellerName === null && listing.syncedPinHash === pinHash) {
       // Published before the seller name was recorded; the hash covers `user`, so it is the same.
@@ -276,7 +277,13 @@ export class ListingSyncService {
   private async saveItem(
     listingId: string,
     item: PinItem | undefined,
-    extra: { pinHash?: string | null; createUnknown?: boolean; sellerName?: string },
+    extra: {
+      pinHash?: string | null;
+      createUnknown?: boolean;
+      sellerName?: string;
+      /** Set on create: a new item must not keep the link of the one it replaces. */
+      resetPinUrl?: boolean;
+    },
   ): Promise<void> {
     await this.prisma.listing.update({
       where: { id: listingId },
@@ -289,6 +296,7 @@ export class ListingSyncService {
               moderatorComment: item.moderator_comment ?? null,
             }
           : {}),
+        ...(extra.resetPinUrl ? { pinUrl: item?.pin_url ?? null } : {}),
         ...(extra.pinHash !== undefined ? { syncedPinHash: extra.pinHash } : {}),
         ...(extra.createUnknown !== undefined ? { createUnknown: extra.createUnknown } : {}),
         ...(extra.sellerName !== undefined ? { pinSellerName: extra.sellerName } : {}),
@@ -410,6 +418,7 @@ export class ListingSyncService {
       data: {
         pinItemId: null,
         pinStatus: null,
+        pinUrl: null,
         notPaid: null,
         syncedPinHash: null,
         createUnknown: false,

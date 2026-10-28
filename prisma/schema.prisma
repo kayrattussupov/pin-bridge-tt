@@ -152,6 +152,8 @@ model Listing {
   moderatorComment  String?      @map("moderator_comment")
   /// Seller name (`user.name`) the item was last sent to Pin with.
   pinSellerName     String?      @map("pin_seller_name")
+  /// Public page of the item on pin.tt (front_my `url`, made absolute). Kept after the item hides.
+  pinUrl            String?      @map("pin_url")
   lastError         Json?        @map("last_error")
   /// Mapping warnings from the last accepted version (shown to the agency).
   warnings          Json?

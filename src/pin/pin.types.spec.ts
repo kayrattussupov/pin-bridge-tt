@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pinItemListSchema, pinItemSchema, pinProfileSchema } from './pin.types';
+import { pinItemListSchema, pinItemSchema, pinProfileSchema, pinPublicUrl } from './pin.types';
 
 // Copied from prod front_my (2026-10-07).
 const frontMyItem = {
@@ -100,5 +100,29 @@ describe('pinProfileSchema', () => {
     expect(pinProfileSchema.parse({ id: 1, legal_name: ' Darcell Taylor ' }).legalName).toBe(
       'Darcell Taylor',
     );
+  });
+});
+
+describe('item url', () => {
+  // front_my on prod (2026-10-28): a path relative to pin.tt.
+  const url = '/adv/658851_3-bedroom-townhouse-in-westmoorings-for-sale/';
+
+  it('makes the front_my url absolute', () => {
+    const item = pinItemSchema.parse({ ...frontMyItem, url });
+    expect(item.pin_url).toBe(
+      'https://pin.tt/adv/658851_3-bedroom-townhouse-in-westmoorings-for-sale/',
+    );
+  });
+
+  it('has no link when the answer has none (POST /items/, numeric status)', () => {
+    expect(pinItemSchema.parse({ id: 1, status: 1 }).pin_url).toBeNull();
+    expect(pinItemSchema.parse({ ...frontMyItem, url: '' }).pin_url).toBeNull();
+  });
+
+  it('keeps https links and drops anything else', () => {
+    expect(pinPublicUrl('https://pin.tt/adv/1_x/')).toBe('https://pin.tt/adv/1_x/');
+    expect(pinPublicUrl('//evil.example/adv/1_x/')).toBeNull();
+    expect(pinPublicUrl('javascript:alert(1)')).toBeNull();
+    expect(pinPublicUrl(null)).toBeNull();
   });
 });
