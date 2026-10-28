@@ -274,8 +274,8 @@ describe('PinClient against fake-pin', () => {
 
       const patched = await client.partialUpdateItem(auth, created.id, { price: 3200 });
       expect(patched).toMatchObject({ id: created.id, price: 3200 });
-      const updated = await client.updateItem(auth, created.id, rentItem({ title: 'New title' }));
-      expect(updated).toMatchObject({ title: 'New title' });
+      const updated = await client.updateItem(auth, created.id, rentItem({ price: 3300 }));
+      expect(updated).toMatchObject({ price: 3300 });
       expect(fake.control.callCount('PATCH /items/:id/partial_update/')).toBe(2);
 
       await client.toggleActive(auth, created.id);
@@ -423,7 +423,7 @@ describe('PinClient recording of Pin answers', () => {
     const created = await client.createItem(auth, rentItem());
     fake.control.setModeration(Number(created.id), 1);
     await client.listMyItems(auth);
-    await client.updateItem(auth, created.id, rentItem({ title: 'New title' }));
+    await client.updateItem(auth, created.id, rentItem({ price: 3300 }));
     await client.partialUpdateItem(auth, created.id, { price: 3200 });
     await client.toggleActive(auth, created.id);
     await client.removeItem(auth, created.id);
@@ -431,7 +431,7 @@ describe('PinClient recording of Pin answers', () => {
     expect(entries.map((e) => [e.endpoint, e.method, e.path, e.itemId])).toEqual([
       ['items.create', 'POST', '/items/', created.id],
       ['items.front_my', 'GET', '/items/front_my/', undefined],
-      ['items.update', 'PATCH', `/items/${created.id}/partial_update/`, created.id],
+      ['items.partial_update', 'PATCH', `/items/${created.id}/partial_update/`, created.id],
       ['items.partial_update', 'PATCH', `/items/${created.id}/partial_update/`, created.id],
       ['items.toggle_active', 'POST', `/items/toggle_active/${created.id}/`, created.id],
       ['items.to_remove', 'POST', `/items/to_remove/${created.id}/`, created.id],

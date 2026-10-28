@@ -277,21 +277,19 @@ export class PinClient {
   }
 
   /**
-   * Edit with the whole body; sending the same body twice gives the same result. Pin answers 405 to
-   * PATCH/PUT on /items/<id>/ (checked on prod 2026-10-28), so this goes through partial_update/.
+   * Edit an existing item. Pin answers 405 to PATCH/PUT on /items/<id>/ and 400 ("cannot be changed
+   * by a partial update") when partial_update/ gets title, rubric, city, attrs, user and the other
+   * create-only fields (checked on prod 2026-10-28). So only the editable fields go out; changing
+   * the rest needs the item to be removed and published again. Sending the same body twice gives
+   * the same result.
    */
   async updateItem(auth: PinAuth, itemId: string, payload: CreateItemPayload): Promise<PinItem> {
-    return this.call({
-      endpoint: 'items.update',
-      method: 'PATCH',
-      path: `/items/${encodeURIComponent(itemId)}/partial_update/`,
-      json: payload,
-      ...this.authOf(auth),
-      record: true,
-      itemId,
-      retry: 'safe',
-      idempotent: true,
-      schema: pinItemSchema,
+    const { description, price, images, coordinates } = payload;
+    return this.partialUpdateItem(auth, itemId, {
+      description,
+      images,
+      ...(price !== undefined && { price }),
+      ...(coordinates !== undefined && { coordinates }),
     });
   }
 

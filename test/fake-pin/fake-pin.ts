@@ -15,6 +15,19 @@ const PREFIX = '/api/v1.6';
 const SMS_WINDOW_MS = 10 * 60 * 1000;
 const SMS_LIMIT = 5;
 const MAX_IMAGES = 16;
+const CREATE_ONLY_FIELDS = new Set([
+  'attrs',
+  'city',
+  'city_districts',
+  'currency_id',
+  'external_id',
+  'item_link',
+  'negotiable_price',
+  'phone_hide',
+  'rubric',
+  'title',
+  'user',
+]);
 const PAGE_SIZE = 20;
 
 export interface FakePinOptions {
@@ -536,6 +549,17 @@ export function buildFakePin(options: FakePinOptions = {}): {
           return reply;
         }
         const body = req.body as ItemBody;
+        // Prod refuses create-only fields here (checked 2026-10-28).
+        const locked = Object.keys(body).filter((k) => CREATE_ONLY_FIELDS.has(k));
+        if (locked.length) {
+          return reply
+            .code(400)
+            .send(
+              Object.fromEntries(
+                locked.map((k) => [k, ['This field cannot be changed by a partial update']]),
+              ),
+            );
+        }
         const errors = validate({ ...body, rubric: body.rubric ?? item.rubric }, true);
         if (Object.keys(errors).length) {
           return reply.code(400).send(errors);
