@@ -51,7 +51,7 @@ export const listingSchema = z
     // https is enforced by ListingValidationService (plain http only with the unsafe dev flag).
     images: z
       .array(z.url({ protocol: /^https?$/ }).max(2000))
-      .max(50)
+      .max(16)
       .default([]),
     contact: z
       .object({

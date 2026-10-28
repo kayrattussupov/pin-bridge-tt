@@ -16,6 +16,7 @@ export type ImageErrorCode =
   | 'http_error'
   | 'too_large'
   | 'not_an_image'
+  | 'unsupported_format'
   | 'image_too_large_dimensions'
   | 'timeout'
   | 'network';
@@ -53,7 +54,8 @@ export interface ImageFetcherOptions {
 const TARGET_LONG_SIDE = 1600;
 /** Refuse decompression bombs: 50 megapixels is far above any real listing photo. */
 const MAX_INPUT_PIXELS = 50_000_000;
-const PHOTO_FORMATS = new Set(['jpeg', 'png', 'webp', 'gif', 'avif', 'heif']);
+/** What agencies may send; anything else (WebP, GIF, ...) is refused with a clear error. */
+const PHOTO_FORMATS = new Set(['jpeg', 'png']);
 
 /**
  * Downloads agency photos without letting a URL reach our internal network (SSRF):
@@ -84,7 +86,7 @@ export class ImageFetcher {
           dispatcher: this.dispatcher,
           signal,
           headers: {
-            accept: 'image/jpeg,image/png,image/webp,image/*;q=0.8',
+            accept: 'image/jpeg,image/png',
             'user-agent': 'PinBridge-ImageFetcher',
           },
         });
@@ -152,8 +154,8 @@ export class ImageFetcher {
     }
     if (!format || !PHOTO_FORMATS.has(format)) {
       throw new ImageFetchError(
-        'not_an_image',
-        `unsupported image format${format ? ` "${format}"` : ''}`,
+        'unsupported_format',
+        `unsupported image format${format ? ` "${format}"` : ''}; only JPEG and PNG are accepted`,
         true,
       );
     }

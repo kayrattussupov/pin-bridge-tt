@@ -195,29 +195,32 @@ export class ListingsService {
     urls: string[],
   ): Promise<void> {
     const current = await tx.listingImage.findMany({ where: { listingId } });
-    const byPosition = new Map(current.map((image) => [image.position, image]));
-    for (const [position, sourceUrl] of urls.entries()) {
-      const image = byPosition.get(position);
-      if (!image) {
-        await tx.listingImage.create({ data: { listingId, position, sourceUrl } });
-      } else if (image.sourceUrl !== sourceUrl || image.status === 'failed') {
-        // A new URL means a new photo: forget the old hash and Pin picture id for this slot.
-        // A photo that failed before gets another chance when the listing is sent again.
-        await tx.listingImage.update({
-          where: { id: image.id },
-          data: {
-            sourceUrl,
-            sha256: null,
-            pinPicId: null,
-            width: null,
-            height: null,
-            status: 'pending',
-            error: null,
-          },
-        });
+    // A photo is identified by its URL, not its slot: reordering or changing the cover keeps the
+    // rows (and their Pin picture ids) and only moves them. A photo that failed before gets
+    // another chance when the listing is sent again, so failed rows are not reused.
+    const pool = new Map<string, typeof current>();
+    for (const image of current) {
+      if (image.status !== 'failed') {
+        pool.set(image.sourceUrl, [...(pool.get(image.sourceUrl) ?? []), image]);
       }
     }
-    await tx.listingImage.deleteMany({ where: { listingId, position: { gte: urls.length } } });
+    const reused = urls.map((url) => pool.get(url)?.shift());
+    const keep = reused.flatMap((image) => (image ? [image.id] : []));
+    await tx.listingImage.deleteMany({ where: { listingId, id: { notIn: keep } } });
+    // Park kept rows on negative positions so moving them never hits the unique (listing, position).
+    for (const [index, image] of reused.entries()) {
+      if (image) {
+        await tx.listingImage.update({ where: { id: image.id }, data: { position: -(index + 1) } });
+      }
+    }
+    for (const [position, sourceUrl] of urls.entries()) {
+      const image = reused[position];
+      if (image) {
+        await tx.listingImage.update({ where: { id: image.id }, data: { position } });
+      } else {
+        await tx.listingImage.create({ data: { listingId, position, sourceUrl } });
+      }
+    }
   }
 
   private async findOwned(
